@@ -77,6 +77,11 @@ main{padding:12px 0 140px}
 .sf .wrap{display:flex;gap:10px}
 .sf .btn{flex:1}
 .card{background:#fff;border-radius:var(--r);padding:14px;margin-bottom:12px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
+.stats div{background:#fff;border-radius:12px;padding:8px 4px;text-align:center}
+.stats b{display:block;font-size:17px;white-space:nowrap}
+.stats small{color:var(--muted);font-size:11.5px}
+.stnote{color:var(--muted);font-size:12px;margin:4px 2px 0}
 .card h3{font-size:15px;margin-bottom:8px}
 .f{display:block;margin-bottom:12px}
 .f:last-child{margin-bottom:0}
@@ -146,14 +151,17 @@ function money(n) { return String(Math.round(+n || 0)).replace(/\B(?=(\d{3})+(?!
 function uid() { return (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)); }
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
-if (!C.supabase || !C.supabase.url || !C.shop) {
-  root.innerHTML = '<div class="login"><form><h1>⚙️ Configuration</h1><p>Ajoutez <code>supabase</code> et <code>shop</code> dans <code>config.js</code>.</p></form></div>';
+if (!C.supabase || !C.supabase.url) {
+  root.innerHTML = '<div class="login"><form><h1>⚙️ Configuration</h1><p>Ajoutez <code>supabase</code> dans <code>config.js</code>.</p></form></div>';
   return;
 }
 
 /* ================= Supabase (plain fetch, no library) ================= */
-var SB = C.supabase.url.replace(/\/$/, ''), KEY = C.supabase.key, SHOP = C.shop;
-var SKEY = 'wo_admin_' + SHOP;
+// The shop is found from the login (owners have one). ?shop=slug or a config shop can pre-select one.
+var SB = C.supabase.url.replace(/\/$/, ''), KEY = C.supabase.key;
+var qShop = (/[?&]shop=([a-z0-9-]+)/.exec(location.search) || [])[1] || null;
+var SHOP = qShop || C.shop || null, isAdmin = false, shopList = null;
+var SKEY = 'wo_admin';
 var sess = null; try { sess = JSON.parse(localStorage.getItem(SKEY) || 'null'); } catch (e) {}
 function saveSess() { try { if (sess) localStorage.setItem(SKEY, JSON.stringify(sess)); else localStorage.removeItem(SKEY); } catch (e) {} }
 
@@ -230,13 +238,31 @@ function uploadPhoto(file, max, target) {
 }
 
 /* ================= state ================= */
-var S = { shop: null, cats: [], items: [] }, tab = 'items', q = '', sheet = null, loadErr = '';
+var S = { shop: null, cats: [], items: [], stats: null }, tab = 'items', q = '', sheet = null, loadErr = '';
+function rpc(fn, args) { return api('POST', '/rest/v1/rpc/' + fn, args || {}); }
+// which shop does this login manage? owner → their shop; platform admin (you) → a picker
+var adminChecked = false;
+function pickShop(id) { SHOP = id; S.shop = null; S.stats = null; tab = 'items'; try { history.replaceState(null, '', '?shop=' + id); } catch (e) {} load(); }
 function load() {
   busy(true);
-  return rest.get('shops?id=eq.' + encodeURIComponent(SHOP) + '&select=id,owner,settings,categories(*),items(*)').then(function (rows) {
+  var ready = adminChecked ? Promise.resolve() :
+    rpc('is_platform_admin').then(function (a) { isAdmin = a === true; }, function () { isAdmin = false; }).then(function () { adminChecked = true; });
+  return ready.then(function () {
+    if (SHOP) return loadShop();
+    return rest.get('shops?owner=eq.' + encodeURIComponent(sess.user.id) + '&select=id,settings&order=created_at').then(function (rows) {
+      if (rows.length === 1 && !isAdmin) { SHOP = rows[0].id; return loadShop(); }
+      if (isAdmin) return rpc('platform_shops').then(function (r) { busy(false); shopList = r; render(); });
+      if (!rows.length) throw new Error('Aucune boutique liée à ce compte (' + sess.user.email + ').');
+      shopList = rows.map(function (r) { return { id: r.id, name: ((r.settings || {}).business || {}).name }; }); busy(false); render();
+    });
+  }).catch(function (e) { busy(false); loadErr = e.message; render(); });
+}
+function loadShop() {
+  return rest.get('shops?id=eq.' + encodeURIComponent(SHOP) + '&select=id,owner,settings,status,paid_until,categories(*),items(*)').then(function (rows) {
     busy(false);
     if (!rows || !rows.length) { loadErr = 'Boutique « ' + SHOP + ' » introuvable.'; return render(); }
-    if (rows[0].owner !== sess.user.id) { loadErr = 'Ce compte n\'a pas accès à cette boutique.'; return render(); }
+    if (rows[0].owner !== sess.user.id && !isAdmin) { loadErr = 'Ce compte n\'a pas accès à cette boutique.'; return render(); }
+    rpc('order_stats', { p_shop: SHOP }).then(function (st) { S.stats = st; if (tab === 'items' && !sheet) render(); }, function () {});
     S.shop = rows[0]; S.cats = (rows[0].categories || []).sort(byPos); S.items = (rows[0].items || []).sort(byPos);
     loadErr = ''; render();
   }).catch(function (e) { busy(false); loadErr = e.message; render(); });
@@ -247,13 +273,19 @@ function catName(id) { var c = S.cats.filter(function (c) { return c.id === id; 
 /* ================= render ================= */
 function render() {
   if (!sess) return renderLogin();
+  if (!S.shop && !SHOP && shopList && !loadErr) {
+    root.innerHTML = '<header class="top"><div class="wrap"><h1>Choisir une boutique</h1>' + (isAdmin ? '<a href="platform.html">🧭 Plateforme</a>' : '') + '<button data-a="logout">Sortir</button></div></header><main class="wrap"><div class="list" style="margin-top:12px">' +
+      shopList.map(function (r) { return '<button class="row" data-a="pick-shop" data-id="' + esc(r.id) + '" style="width:100%;text-align:start"><div class="rbody"><b>' + esc(r.name || r.id) + '</b><small>' + esc(r.id) + (r.open === false ? ' · fermé' : '') + '</small></div></button>'; }).join('') + '</div></main>';
+    return;
+  }
   if (!S.shop) {
     root.innerHTML = '<div class="login"><form onsubmit="return false"><h1>' + (loadErr ? '⚠️' : '…') + '</h1><p>' + esc(loadErr || 'Chargement') + '</p>' +
       (loadErr ? '<button class="btn pri" data-a="reload">Réessayer</button><p style="margin-top:12px"><button class="btn ghost" data-a="logout" style="width:100%">Se déconnecter</button></p>' : '') + '</form></div>';
     return;
   }
   var st = S.shop.settings || {}, b = st.business || {};
-  var h = '<header class="top"><div class="wrap"><h1>' + esc(b.name || SHOP) + '</h1><a href="index.html" target="_blank" rel="noopener">👁 Voir le site</a><button data-a="logout" >Sortir</button></div></header><main class="wrap">';
+  var h = '<header class="top"><div class="wrap"><h1>' + esc(b.name || SHOP) + '</h1><a href="/' + esc(SHOP) + '" target="_blank" rel="noopener">👁 Voir</a>' + (isAdmin ? '<button data-a="switch">⇄</button>' : '') + '<button data-a="logout" >Sortir</button></div></header><main class="wrap">';
+  if (S.shop.status === 'suspended' || (S.shop.paid_until && S.shop.paid_until < new Date().toISOString().slice(0, 10))) h += '<div class="card" style="background:#fef2f2;margin-top:12px"><b>⛔ Menu fermé au public.</b> Contactez votre prestataire.</div>';
   if (tab === 'items') h += itemsTab(); else if (tab === 'cats') h += catsTab(); else h += shopTab(st);
   h += '</main>';
   if (tab === 'items') h += '<button class="fab" data-a="new-item" aria-label="Ajouter un article">+</button>';
@@ -282,9 +314,13 @@ function renderLogin(err) {
 function thumbHtml(it) {
   return it.photo ? '<img class="thumb" loading="lazy" alt="" src="' + esc(publicUrl(thumbOf(pathOf(it.photo) || ''))) + '" onerror="this.onerror=null;this.src=\'' + esc(it.photo) + '\'">' : '<span class="thumb">' + esc(it.emoji || '🍽️') + '</span>';
 }
+function statsCard() {
+  var s = S.stats; if (!s) return '';
+  return '<div class="stats"><div><b>' + (s.today || 0) + '</b><small>aujourd\'hui</small></div><div><b>' + (s.week || 0) + '</b><small>7 jours</small></div><div><b>' + (s.month || 0) + '</b><small>30 jours</small></div><div><b>' + money(s.month_total || 0) + '</b><small>valeur 30 j</small></div></div><p class="stnote">Commandes envoyées sur WhatsApp</p>';
+}
 function itemsTab() {
-  if (!S.items.length) return '<div class="empty"><b>🍽️</b>Aucun article pour l\'instant.<br>Appuyez sur <b style="display:inline;font-size:inherit">+</b> pour ajouter le premier.</div>';
-  var h = '<input class="search" id="q" type="search" placeholder="🔎 Rechercher un article" value="' + esc(q) + '">';
+  if (!S.items.length) return statsCard() + '<div class="empty"><b>🍽️</b>Aucun article pour l\'instant.<br>Appuyez sur <b style="display:inline;font-size:inherit">+</b> pour ajouter le premier.</div>';
+  var h = statsCard() + '<input class="search" id="q" type="search" placeholder="🔎 Rechercher un article" value="' + esc(q) + '">';
   var groups = S.cats.map(function (c) { return { id: c.id, name: catName(c.id) }; }).concat([{ id: null, name: 'Sans catégorie' }]);
   var any = false;
   groups.forEach(function (g) {
@@ -441,12 +477,24 @@ function shopTab(st) {
   h += '<div class="card"><h3>Infos</h3>' +
     fld('business.name', 'Nom du commerce *', b.name) +
     '<label class="f"><span>Numéro WhatsApp *</span><input data-s="wa" type="tel" inputmode="tel" value="' + esc(wa) + '" placeholder="0555 12 34 56"><small>Les commandes arrivent sur ce numéro.</small></label>' +
-    fld('business.tagline', 'Slogan', b.tagline, 'Ex : Pizzas au feu de bois') + fld('business.hours', 'Horaires / info', b.hours, 'Ex : 11h – 00h, 7j/7') +
-    fld('business.address', 'Adresse', b.address) + fld('business.instagram', 'Instagram (sans @)', b.instagram) +
+    fld('business.tagline', 'Slogan', b.tagline, 'Ex : Pizzas au feu de bois') +
+    fld('business.address', 'Adresse', b.address) +
     '<div class="f"><span>Logo</span><div style="display:flex;gap:10px;align-items:center">' + (/[./]/.test(b.logo || '') ? '<img class="thumb" src="' + esc(b.logo) + '" alt="">' : '<span class="thumb">' + esc(b.logo || '🏪') + '</span>') +
-    '<label class="btn ghost" for="logo" style="flex:1">📷 Changer le logo</label><input id="logo" type="file" accept="image/*" hidden></div></div></div>';
+    '<label class="btn ghost" for="logo" style="flex:1">📷 Changer le logo</label><input id="logo" type="file" accept="image/*" hidden></div></div>' +
+    '<div class="f"><span>Photo de couverture</span>' + (b.cover ? '<img src="' + esc(b.cover) + '" alt="" style="width:100%;height:110px;object-fit:cover;border-radius:10px;margin-bottom:8px">' : '') +
+    '<div style="display:flex;gap:8px"><label class="btn ghost" for="cover" style="flex:1">🖼 ' + (b.cover ? 'Changer' : 'Ajouter') + ' la couverture</label>' + (b.cover ? '<button class="btn danger" data-a="rm-cover">Retirer</button>' : '') + '<input id="cover" type="file" accept="image/*" hidden></div></div></div>';
+  var days = b.closedDays || [], DN = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+  h += '<div class="card"><h3>Horaires</h3><div class="two"><label class="f"><span>Ouverture</span><input type="time" data-p="business.open" value="' + esc(b.open || '') + '"></label>' +
+    '<label class="f"><span>Fermeture</span><input type="time" data-p="business.close" value="' + esc(b.close || '') + '"></label></div>' +
+    '<div class="f"><span>Jours de fermeture</span><div class="chips">' + [6, 0, 1, 2, 3, 4, 5].map(function (d) { return '<button class="chip' + (days.indexOf(d) >= 0 ? ' on' : '') + '" data-a="day" data-v="' + d + '">' + DN[d] + '</button>'; }).join('') + '</div>' +
+    '<small>Hors horaires, le site affiche « Fermé » et bloque les commandes. Laissez vide = toujours ouvert.</small></div>' +
+    fld('business.hours', 'Texte horaires (optionnel)', b.hours, 'Ex : 11h – 00h, 7j/7') + '</div>';
+  h += '<div class="card"><h3>Réseaux</h3>' + fld('business.instagram', 'Instagram (sans @)', b.instagram, 'bahiapizza') + fld('business.tiktok', 'TikTok (sans @)', b.tiktok) +
+    fld('business.facebook', 'Facebook (nom de page ou lien)', b.facebook) + fld('business.maps', 'Google Maps (lien)', b.maps, 'https://maps.app.goo.gl/…') + '</div>';
   h += '<details><summary>🇩🇿 Textes en arabe</summary>' + fld('business.name_ar', 'الاسم', b.name_ar, '', 1) + fld('business.tagline_ar', 'الشعار', b.tagline_ar, '', 1) + fld('business.hours_ar', 'أوقات العمل', b.hours_ar, '', 1) + fld('business.address_ar', 'العنوان', b.address_ar, '', 1) + '</details>';
-  h += '<div class="card"><h3>Apparence</h3><div class="f"><span>Type</span><div class="chips">' +
+  var THEMES = [['classic', 'Classique'], ['dark', 'Sombre'], ['street', 'Street food'], ['elegant', 'Élégant']];
+  h += '<div class="card"><h3>Apparence</h3><div class="f"><span>Style</span><div class="chips">' + THEMES.map(function (t) { return '<button class="chip' + ((st.theme || 'classic') === t[0] ? ' on' : '') + '" data-a="theme" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div></div>' +
+    '<div class="f"><span>Type</span><div class="chips">' +
     '<button class="chip' + (st.mode !== 'shop' ? ' on' : '') + '" data-a="mode" data-v="menu">🍽️ Restaurant</button><button class="chip' + (st.mode === 'shop' ? ' on' : '') + '" data-a="mode" data-v="shop">🛍️ Boutique</button></div></div>' +
     '<div class="two"><label class="f"><span>Couleur principale</span><input type="color" data-p="colors.primary" value="' + esc(col.primary || '#c1121f') + '" style="height:46px;padding:3px"></label>' +
     '<label class="f"><span>Couleur secondaire</span><input type="color" data-p="colors.accent" value="' + esc(col.accent || '#f77f00') + '" style="height:46px;padding:3px"></label></div>' +
@@ -466,7 +514,7 @@ function shopTab(st) {
   h += '<button class="add" data-a="add-opt">+ Ajouter un mode (ex : À emporter, Stop desk)</button>' +
     '<div class="two" style="margin-top:12px"><label class="f"><span>Gratuite dès (DA)</span><input type="number" inputmode="numeric" data-p="delivery.freeAbove" value="' + esc(D.freeAbove || '') + '" placeholder="0 = non"></label>' +
     '<label class="f"><span>Commande min. (DA)</span><input type="number" inputmode="numeric" data-p="delivery.minOrder" value="' + esc(D.minOrder || '') + '" placeholder="0"></label></div></div>';
-  h += '<div class="card"><h3>Outils</h3><a class="btn ghost" style="width:100%;text-decoration:none" href="qr.html" target="_blank" rel="noopener">📱 Affiche QR code</a></div>';
+  h += '<div class="card"><h3>Outils</h3><a class="btn ghost" style="width:100%;text-decoration:none" href="qr.html?shop=' + esc(SHOP) + '" target="_blank" rel="noopener">📱 Affiche QR code</a></div>';
   h += '<div class="savebar"><button class="btn green" style="width:100%" data-a="save-shop">Enregistrer la boutique</button></div></div>';
   return h;
 }
@@ -499,7 +547,7 @@ root.addEventListener('click', function (e) {
   var d = sheet && sheet.d, g = +el.getAttribute('data-g'), c = +el.getAttribute('data-c');
   switch (a) {
     case 'tab': tab = el.getAttribute('data-t'); sheet = null; render(); window.scrollTo(0, 0); break;
-    case 'logout': if (confirm('Se déconnecter ?')) { sess = null; saveSess(); S.shop = null; render(); } break;
+    case 'logout': if (confirm('Se déconnecter ?')) { sess = null; saveSess(); S.shop = null; SHOP = qShop || C.shop || null; shopList = null; isAdmin = false; adminChecked = false; render(); } break;
     case 'reload': load(); break;
     case 'new-item': openItem(null); break;
     case 'edit-item': openItem(S.items.filter(function (i) { return i.id === id; })[0]); break;
@@ -525,6 +573,11 @@ root.addEventListener('click', function (e) {
       break;
     case 'cat-up': moveCat(+el.getAttribute('data-i'), -1); break;
     case 'cat-down': moveCat(+el.getAttribute('data-i'), 1); break;
+    case 'pick-shop': pickShop(id); break;
+    case 'switch': SHOP = null; S.shop = null; shopList = null; try { history.replaceState(null, '', location.pathname); } catch (e2) {} load(); break;
+    case 'theme': S.shop.settings.theme = el.getAttribute('data-v'); render(); break;
+    case 'day': var bb = S.shop.settings.business = S.shop.settings.business || {}, dv = +el.getAttribute('data-v'), dd = bb.closedDays = bb.closedDays || [], di = dd.indexOf(dv); if (di >= 0) dd.splice(di, 1); else dd.push(dv); render(); break;
+    case 'rm-cover': delete S.shop.settings.business.cover; render(); break;
     case 'mode': S.shop.settings.mode = el.getAttribute('data-v'); render(); break;
     case 'lang': S.shop.settings.lang = el.getAttribute('data-v'); render(); break;
     case 'zone': var D = S.shop.settings.delivery = S.shop.settings.delivery || {}; D.wilayas = el.getAttribute('data-v') === 'all' ? [] : (D.wilayas && D.wilayas.length ? D.wilayas : ['31']); render(); break;
@@ -567,6 +620,14 @@ root.addEventListener('change', function (e) {
     if (sheet.preview) URL.revokeObjectURL(sheet.preview);
     sheet.preview = URL.createObjectURL(el.files[0]); render(); return;
   }
+  if (el.id === 'cover' && el.files[0]) {
+    busy(true);
+    compress(el.files[0], 1400, 160000).then(function (bl) {
+      var p = SHOP + '/cover-' + uid() + (bl[0].type === 'image/webp' ? '.webp' : '.jpg');
+      return upload(p, bl[0]).then(function () { setPath(S.shop.settings, 'business.cover', publicUrl(p)); busy(false); render(); toast('Couverture prête. Enregistrez la boutique.'); });
+    }).catch(function (er) { busy(false); toast(er.message, true); });
+    return;
+  }
   if (el.id === 'logo' && el.files[0]) {
     busy(true);
     compress(el.files[0], 300, 40000).then(function (bl) {
@@ -577,7 +638,7 @@ root.addEventListener('change', function (e) {
 });
 window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && sheet) { sheet = null; render(); } });
 
-window.__admin = { state: S, fromEditor: fromEditor, toEditor: toEditor, normWa: normWa, parsePer: parsePer };
+window.__admin = { shop: function () { return SHOP; }, isAdmin: function () { return isAdmin; }, state: S, fromEditor: fromEditor, toEditor: toEditor, normWa: normWa, parsePer: parsePer };
 if (sess) load(); else render();
 })();
 </script>
