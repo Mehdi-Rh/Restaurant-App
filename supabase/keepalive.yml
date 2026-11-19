@@ -17,7 +17,7 @@ jobs:
             const c = w.CONFIG || {};
             if (!c.supabase || !c.supabase.url) { console.log("No Supabase configured, skipping."); process.exit(0); }
             fetch(c.supabase.url.replace(/\/$/, "") + "/rest/v1/shops?select=id&limit=1",
-              { headers: { apikey: c.supabase.key, Authorization: "Bearer " + c.supabase.key } })
+              { headers: { apikey: c.supabase.key } })
               .then(r => { console.log("Supabase answered", r.status); process.exit(r.ok ? 0 : 1); })
               .catch(e => { console.error(e); process.exit(1); });
           '

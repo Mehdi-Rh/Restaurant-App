@@ -1,6 +1,6 @@
 # Test report — Supabase version
 
-**50/50 checks passed** · 2026-11-19 14:18 UTC · Chromium, Pixel 5 · mock Supabase
+**50/50 checks passed** · 2026-11-19 15:42 UTC · Chromium, Pixel 5 · mock Supabase
 
 ## ✅ Public page reads the menu from Supabase
 - ✓ 16 items loaded from the database (got 16, want 16)
@@ -30,10 +30,10 @@
 ## ✅ Admin: add item with photo (compressed) and options
 - ✓ item saved
 - ✓ empty base price → lowest size price (got 800, want 800)
-- ✓ category saved (got "679a1fe6-4882-43f1-aa14-4d467fb3dcf2", want "679a1fe6-4882-43f1-aa14-4d467fb3dcf2")
+- ✓ category saved (got "75abe4c5-fb3b-4a9e-88d6-b3f704fcaaa8", want "75abe4c5-fb3b-4a9e-88d6-b3f704fcaaa8")
 - ✓ sizes, sold-out XL and extra saved (got "[[\"size\",false,[[\"M\",800,null,false],[\"L\",1200,null,false],[\"XL\",1700,null,true]]],[\"extra\",true,[[\"Fromage\",null,100,false]]]]", want "[[\"size\",false,[[\"M\",800,null,false],[\"L\",1200,null,false],[\"XL\",1700,null,true]]],[\"extra\",true,[[\"Fromage\",null,100,false]]]]")
 - ✓ photo stored as WebP
-- ✓ photo 11.3 MB → 70 KB (≤ 100 KB)
+- ✓ photo 11.3 MB → 71 KB (≤ 100 KB)
 - ✓ thumbnail 3 KB (≤ 20 KB)
 - ✓ photo saved in the shop folder
 

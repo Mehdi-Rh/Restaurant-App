@@ -69,7 +69,7 @@ $('dl').onclick=function(){ save($('cv'),'affiche-qr.png'); };
 $('dlq').onclick=function(){ var c=document.createElement('canvas'); c.width=c.height=1000; drawQR(c.getContext('2d'),qr($('url').value),0,0,1000); save(c,'qr.png'); };
 draw();
 if (C.supabase && C.supabase.url && C.shop) {
-  fetch(C.supabase.url.replace(/\/$/,'') + '/rest/v1/shops?id=eq.' + encodeURIComponent(C.shop) + '&select=settings', { headers: { apikey: C.supabase.key, Authorization: 'Bearer ' + C.supabase.key } })
+  fetch(C.supabase.url.replace(/\/$/,'') + '/rest/v1/shops?id=eq.' + encodeURIComponent(C.shop) + '&select=settings', { headers: { apikey: C.supabase.key } })
     .then(function(r){ return r.json(); }).then(function(rows){ var st = rows[0] && rows[0].settings || {};
       if (st.business && st.business.name && !$('title').value) $('title').value = st.business.name;
       if (st.colors && st.colors.primary) $('color').value = st.colors.primary; draw(); }).catch(function(){});

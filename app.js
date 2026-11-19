@@ -467,7 +467,7 @@
     var url = C.supabase.url.replace(/\/$/, '') + '/rest/v1/shops?id=eq.' + encodeURIComponent(C.shop) +
       '&select=settings,categories(id,name,name_ar,icon,position),items(id,category_id,name,name_ar,description,description_ar,price,photo,emoji,variants,available,popular,hidden,position)';
     var fetchData = function () {
-      fetch(url, { headers: { apikey: C.supabase.key, Authorization: 'Bearer ' + C.supabase.key } })
+      fetch(url, { headers: { apikey: C.supabase.key } })
         .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
         .then(function (rows) {
           if (!rows.length) throw new Error('shop not found');
