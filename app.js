@@ -20,8 +20,40 @@
   }
   applyConfig(C);
 
+  /* ---------- which shop? (one site serves every restaurant) ---------- */
+  // Order: config.shop (single-shop deploy) → ?shop= → /slug path → slug.baseDomain → custom domain (looked up in Supabase)
+  var RESERVED = ['www', 'admin', 'platform', 'app', 'api', 'qr', 'demos', 'lib', 'assets', 'static', 'index', 'config', 'backups', 'supabase'];
+  var SLUG = /^[a-z0-9][a-z0-9-]{1,39}$/;
+  function slugFromLocation(loc) {
+    var q = /[?&]shop=([a-z0-9-]+)/.exec(loc.search || '');
+    if (q && SLUG.test(q[1])) return q[1];
+    var seg = (loc.pathname || '/').split('/')[1] || '';
+    if (SLUG.test(seg) && RESERVED.indexOf(seg) < 0) return seg;
+    var bd = C.baseDomain, host = (loc.hostname || '').toLowerCase();
+    if (bd && host.length > bd.length + 1 && host.slice(-bd.length - 1) === '.' + bd) {
+      var sub = host.slice(0, -bd.length - 1);
+      if (SLUG.test(sub) && RESERVED.indexOf(sub) < 0) return sub;
+    }
+    return null;
+  }
+  function isCustomHost(host) {
+    host = (host || '').toLowerCase();
+    if (!host || host === 'localhost' || /^[\d.]+$/.test(host) || /\.netlify\.app$/.test(host)) return false;
+    if (C.baseDomain && (host === C.baseDomain || host.slice(-C.baseDomain.length - 1) === '.' + C.baseDomain)) return false;
+    return (C.platformHosts || []).indexOf(host) < 0;
+  }
+  var multi = !!(C.supabase && C.supabase.url && !C.shop);
+  var lookupDomain = false;
+  if (multi) {
+    C.shop = slugFromLocation(location);
+    if (!C.shop && isCustomHost(location.hostname)) lookupDomain = true;
+    else if (!C.shop && C.defaultShop) { location.replace('/' + C.defaultShop + location.search); C.shop = C.defaultShop; }
+  }
+  window.__shopRouting = { slugFromLocation: slugFromLocation, isCustomHost: isCustomHost };
+
   /* ---------- storage ---------- */
-  var NS = 'wo_' + String(C.shop || C.id || B.name || 'shop').replace(/\W+/g, '_') + '_';
+  // one cache per shop: with path links every shop shares the same browser storage
+  var NS = 'wo_' + String(C.shop || (lookupDomain ? location.hostname : '') || C.id || B.name || 'shop').replace(/\W+/g, '_') + '_';
   function sget(k, d) { try { var v = localStorage.getItem(NS + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
   function sset(k, v) { try { localStorage.setItem(NS + k, JSON.stringify(v)); } catch (e) {} }
 
@@ -48,7 +80,10 @@
       reopen: 'Rouvrir WhatsApp', finish: 'Terminer et vider le panier', freeAbove: 'Livraison gratuite dès',
       minOrder: 'Commande minimum', demo: 'Démo : choisissez un contact dans WhatsApp, rien n’est envoyé au commerce.',
       required1: 'obligatoire', popular: 'Populaire', newOrder: 'Nouvelle commande', customer: 'Client', addr: 'Adresse',
-      offline: 'Connexion impossible. Vérifiez votre internet.', retry: 'Réessayer', noteL: 'Note', tel: 'Tél', items: 'article(s)', addTo: 'Ajouter au panier', fee: 'Frais'
+      offline: 'Connexion impossible. Vérifiez votre internet.', retry: 'Réessayer', noteL: 'Note', tel: 'Tél', items: 'article(s)', addTo: 'Ajouter au panier', fee: 'Frais',
+      closedNow: 'Fermé maintenant', opensAt: 'Ouvre à', openUntil: 'Ouvert jusqu’à', closedToday: 'Fermé aujourd’hui',
+      unavailable: 'Temporairement indisponible', unavailableTxt: 'Ce menu n’est pas disponible pour le moment. Revenez bientôt.',
+      notFound: 'Menu introuvable', notFoundTxt: 'Vérifiez le lien ou scannez à nouveau le QR code.'
     },
     ar: {
       add: 'أضف', from: 'من', viewCart: 'عرض السلة', cart: 'طلبك', empty: 'سلتك فارغة.',
@@ -60,7 +95,10 @@
       reopen: 'افتح واتساب مجددًا', finish: 'إنهاء وإفراغ السلة', freeAbove: 'توصيل مجاني ابتداءً من',
       minOrder: 'الحد الأدنى للطلب', demo: 'نسخة تجريبية: اختر أي جهة اتصال، لا يُرسل شيء للمحل.',
       required1: 'إجباري', popular: 'الأكثر طلبًا', newOrder: 'طلب جديد', customer: 'الزبون', addr: 'العنوان',
-      offline: 'تعذر الاتصال. تحقق من الإنترنت.', retry: 'إعادة المحاولة', noteL: 'ملاحظة', tel: 'الهاتف', items: 'منتج', addTo: 'أضف إلى السلة', fee: 'المصاريف'
+      offline: 'تعذر الاتصال. تحقق من الإنترنت.', retry: 'إعادة المحاولة', noteL: 'ملاحظة', tel: 'الهاتف', items: 'منتج', addTo: 'أضف إلى السلة', fee: 'المصاريف',
+      closedNow: 'مغلق الآن', opensAt: 'يفتح على', openUntil: 'مفتوح حتى', closedToday: 'مغلق اليوم',
+      unavailable: 'غير متاح مؤقتًا', unavailableTxt: 'هذه القائمة غير متاحة حاليًا. عد قريبًا.',
+      notFound: 'القائمة غير موجودة', notFoundTxt: 'تحقق من الرابط أو امسح رمز QR مجددًا.'
     }
   };
   function t(k, l) { var d = T[l || lang] || T.fr; return d[k] || T.fr[k] || k; }
@@ -143,6 +181,28 @@
   }
   function wName(code, l) { for (var i = 0; i < W.length; i++) if (W[i][0] === code) return code + ' - ' + ((l || lang) === 'ar' ? W[i][2] : W[i][1]); return code; }
 
+  /* ---------- opening hours: business.open "11:00", business.close "23:30", business.closedDays [5] (0 = dimanche) ---------- */
+  function mins(hm) { var m = /^(\d{1,2}):?(\d{2})$/.exec(String(hm || '').trim()); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+  function openState(now) {
+    now = now || new Date();
+    var o = mins(B.open), c = mins(B.close), days = B.closedDays || [];
+    if (o == null || c == null) return { open: days.indexOf(now.getDay()) < 0, known: false };
+    var m = now.getHours() * 60 + now.getMinutes(), day = now.getDay();
+    var overnight = c <= o, inSpan, spanDay = day;
+    if (!overnight) inSpan = m >= o && m < c;
+    else if (m >= o) inSpan = true;
+    else { inSpan = m < c; spanDay = (day + 6) % 7; }   // after midnight: belongs to yesterday's service
+    var open = inSpan && days.indexOf(spanDay) < 0;
+    return { open: open, known: true, closedToday: days.indexOf(day) >= 0 };
+  }
+  window.__openState = function (b, d) { var keep = B; B = b; try { return openState(d); } finally { B = keep; } };
+  function hoursLine() {
+    var s = openState();
+    if (!s.known) return s.open ? '' : t('closedToday');
+    if (s.open) return t('openUntil') + ' ' + B.close;
+    return t('closedNow') + (s.closedToday ? '' : ' · ' + t('opensAt') + ' ' + B.open);
+  }
+
   /* ---------- rendering ---------- */
   var root = document.getElementById('app');
   function hue(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
@@ -167,9 +227,17 @@
     if (col.primary) st.setProperty('--primary', col.primary);
     if (col.accent) st.setProperty('--accent', col.accent);
     if (col.bg) st.setProperty('--bg', col.bg);
-    document.body.className = 'mode-' + (C.mode || 'menu') + (view ? ' noscroll' : '');
+    document.body.className = 'mode-' + (C.mode || 'menu') + ' theme-' + (C.theme || 'classic') + (view ? ' noscroll' : '');
 
     var h = '';
+    if (notFound) {
+      root.innerHTML = '<div class="state"><div class="big-ok">🔎</div><h2>' + esc(t('notFound')) + '</h2><p class="muted">' + esc(t('notFoundTxt')) + '</p></div>';
+      return;
+    }
+    if (closedShop) {
+      root.innerHTML = '<div class="state">' + logo() + '<h2>' + esc(L(B, 'name')) + '</h2><p><b>' + esc(t('unavailable')) + '</b></p><p class="muted">' + esc(t('unavailableTxt')) + '</p></div>';
+      return;
+    }
     if (!live && !ITEMS.length && !(C.supabase && C.supabase.url)) {
       root.innerHTML = '<div class="state"><p>⚙️ Configurez <code>config.js</code> (supabase.url, supabase.key, shop).</p></div>';
       return;
@@ -180,10 +248,12 @@
       return;
     }
     if (C.demo) h += '<div class="demo">' + esc(t('demo')) + '</div>';
-    h += '<header class="hero"><div class="wrap hrow">' + logo() +
+    var hl = hoursLine(), shut = !openState().open;
+    h += '<header class="hero' + (B.cover ? ' cover' : '') + '"' + (B.cover ? ' style="--cover:url(&quot;' + esc(B.cover) + '&quot;)"' : '') + '><div class="wrap hrow">' + logo() +
       '<div class="hinfo"><h1>' + esc(L(B, 'name')) + '</h1>' +
       (L(B, 'tagline') ? '<p>' + esc(L(B, 'tagline')) + '</p>' : '') +
-      '<p class="meta">' + [L(B, 'hours'), L(B, 'address')].filter(Boolean).map(esc).join(' · ') + '</p></div>' +
+      '<p class="meta">' + [L(B, 'hours'), L(B, 'address')].filter(Boolean).map(esc).join(' · ') + '</p>' +
+      (hl ? '<p class="hours' + (shut ? ' shut' : '') + '">' + (shut ? '🔴 ' : '🟢 ') + esc(hl) + '</p>' : '') + '</div>' +
       (langs.length > 1 ? '<button class="lang" data-act="lang">' + (lang === 'ar' ? 'FR' : 'عربي') + '</button>' : '') +
       '</div>';
     var badges = [];
@@ -205,7 +275,7 @@
         ITEMS.filter(function (i) { return i.cat === c.id && !i.hidden; }).map(card).join('') + '</div></section>';
     });
     if (loose.length) h += '<section><div class="list">' + loose.map(card).join('') + '</div></section>';
-    h += '<footer>' + esc(L(B, 'name')) + (B.instagram ? ' · <a href="https://instagram.com/' + esc(B.instagram) + '" target="_blank" rel="noopener">@' + esc(B.instagram) + '</a>' : '') + '</footer>';
+    h += '<footer><div>' + esc(L(B, 'name')) + '</div>' + socials() + '</footer>';
     h += '</main>';
 
     var n = count();
@@ -221,6 +291,21 @@
     window.scrollTo(0, y);
     var ns = root.querySelector('.sheet'); if (ns) ns.scrollTop = sy;
     if (fid) { var fe = document.getElementById(fid); if (fe) { fe.focus(); } }
+  }
+
+  function socials() {
+    var S = [
+      ['instagram', 'Instagram', function (v) { return 'https://instagram.com/' + v.replace(/^@/, ''); }],
+      ['tiktok', 'TikTok', function (v) { return 'https://www.tiktok.com/@' + v.replace(/^@/, ''); }],
+      ['facebook', 'Facebook', function (v) { return /^https?:/.test(v) ? v : 'https://facebook.com/' + v; }],
+      ['maps', '📍 Maps', function (v) { return /^https?:/.test(v) ? v : 'https://maps.google.com/?q=' + encodeURIComponent(v); }]
+    ].filter(function (x) { return B[x[0]]; });
+    if (!S.length) return '';
+    return '<div class="social">' + S.map(function (x) {
+      var url = x[2](String(B[x[0]]).trim());
+      if (!/^https:\/\//.test(url)) return '';
+      return '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(x[1]) + '</a>';
+    }).join('') + '</div>';
   }
 
   function card(it) {
@@ -302,9 +387,10 @@
     h += '<div class="tot"><div><span>' + esc(t('subtotal')) + '</span><span>' + money(sub) + '</span></div>';
     if (opt.fee != null && opt.fee !== 0) h += '<div><span>' + esc(L(opt, 'label')) + '</span><span>' + (fee == null ? '—' : fee === 0 ? esc(t('free')) : money(fee)) + '</span></div>';
     h += '<div class="big"><span>' + esc(t('total')) + '</span><span>' + money(sub + (fee || 0)) + '</span></div></div>';
-    var below = D.minOrder && sub < D.minOrder;
+    var below = D.minOrder && sub < D.minOrder, shut = !openState().open;
     if (below) h += '<p class="warn">' + esc(t('minOrder')) + ' : ' + money(D.minOrder) + '</p>';
-    h += '</div><div class="sfoot"><button class="cta wa" data-act="send"' + (below ? ' disabled' : '') + '>' + waIcon + esc(t('send')) + '</button></div>';
+    if (shut) h += '<p class="warn">' + esc(hoursLine()) + '</p>';
+    h += '</div><div class="sfoot"><button class="cta wa" data-act="send"' + (below || shut ? ' disabled' : '') + '>' + waIcon + esc(shut ? t('closedNow') : t('send')) + '</button></div>';
     return h;
   }
 
@@ -372,6 +458,7 @@
   }
 
   function send() {
+    if (!openState().open) return;
     if (!validate()) {
       render();
       var first = root.querySelector('.fld.err input, .fld.err select, .fld.err textarea');
@@ -384,6 +471,13 @@
     sset('customer', { name: cust.name, phone: cust.phone, wilaya: cust.wilaya, address: cust.address, opt: cust.opt });
     view = { type: 'done', url: url };
     sset('sent', { url: url, at: Date.now() });
+    if (live && !C.demo) {   // order counter: no customer data, just "one more order" for this shop
+      try {
+        fetch(C.supabase.url.replace(/\/$/, '') + '/rest/v1/rpc/log_order', { method: 'POST', keepalive: true,
+          headers: { apikey: C.supabase.key, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ p_shop: C.shop, p_total: subtotal() + (deliveryFee() || 0) }) }).catch(function () {});
+      } catch (e) {}
+    }
     render();
     window.location.href = url;
   }
@@ -446,7 +540,7 @@
     var st = row.settings || {};
     var c = {};
     Object.keys(st).forEach(function (k) { c[k] = st[k]; });
-    c.shop = base.shop; c.supabase = base.supabase;
+    c.shop = base.shop; c.supabase = base.supabase; c.baseDomain = C.baseDomain;
     c.categories = (row.categories || []).sort(function (a, b) { return a.position - b.position; })
       .map(function (k) { return { id: k.id, name: k.name, name_ar: k.name_ar, icon: k.icon }; });
     c.items = (row.items || []).filter(function (i) { return !i.hidden; })
@@ -458,25 +552,44 @@
       });
     return c;
   }
-  var live = C.supabase && C.supabase.url && C.shop;
-  var loading = false, loadError = false;
+  function isOpenShop(row) {
+    if (row.status && row.status !== 'active') return false;
+    if (row.paid_until) { var d = new Date(), today = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); if (row.paid_until < today) return false; }
+    return true;
+  }
+  var live = C.supabase && C.supabase.url && (C.shop || lookupDomain);
+  var loading = false, loadError = false, notFound = !!(multi && !C.shop && !lookupDomain), closedShop = false;
   if (live) {
-    var base = { shop: C.shop, supabase: C.supabase };
+    var SBU = C.supabase.url.replace(/\/$/, '');
     var cached = sget('data', null);
-    if (cached) applyConfig(cached); else loading = true;
-    var url = C.supabase.url.replace(/\/$/, '') + '/rest/v1/shops?id=eq.' + encodeURIComponent(C.shop) +
-      '&select=settings,categories(id,name,name_ar,icon,position),items(id,category_id,name,name_ar,description,description_ar,price,photo,emoji,variants,available,popular,hidden,position)';
+    if (cached) { applyConfig(cached); closedShop = !!cached.closed; } else loading = true;
+    var shopUrl = function () {
+      return SBU + '/rest/v1/shops?id=eq.' + encodeURIComponent(C.shop) +
+        '&select=settings,status,paid_until,categories(id,name,name_ar,icon,position),items(id,category_id,name,name_ar,description,description_ar,price,photo,emoji,variants,available,popular,hidden,position)';
+    };
+    var resolveShop = function () {
+      if (C.shop) return Promise.resolve(C.shop);
+      return fetch(SBU + '/rest/v1/domains?host=eq.' + encodeURIComponent(location.hostname.toLowerCase()) + '&select=shop_id', { headers: { apikey: C.supabase.key } })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (rows) { if (!rows.length) throw { notFound: true }; C.shop = rows[0].shop_id; return C.shop; });
+    };
     var fetchData = function () {
-      fetch(url, { headers: { apikey: C.supabase.key } })
+      resolveShop().then(function () { return fetch(shopUrl(), { headers: { apikey: C.supabase.key } }); })
         .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
         .then(function (rows) {
-          if (!rows.length) throw new Error('shop not found');
-          var fresh = fromDb(rows[0], base);
-          loading = false; loadError = false;
+          if (!rows.length) throw { notFound: true };
+          var fresh = fromDb(rows[0], { shop: C.shop, supabase: C.supabase });
+          fresh.closed = !isOpenShop(rows[0]);
+          if (fresh.closed) { fresh.items = []; fresh.categories = []; }
+          loading = false; loadError = false; closedShop = fresh.closed;
           if (JSON.stringify(fresh) !== JSON.stringify(sget('data', null))) { sset('data', fresh); applyConfig(fresh); cleanCart(); save(); render(); }
           else if (!cached) render();
         })
-        .catch(function () { loading = false; loadError = !sget('data', null); render(); });
+        .catch(function (e) {
+          loading = false;
+          if (e && e.notFound) { notFound = true; try { localStorage.removeItem(NS + 'data'); } catch (x) {} render(); return; }
+          loadError = !sget('data', null); render();
+        });
     };
     fetchData();
     window.addEventListener('online', function () { if (loadError) fetchData(); });

@@ -38,7 +38,10 @@ button.alt{background:#fff;color:#111;border:1px solid #d1d5db}
 (function(){
 var C=window.CONFIG||{}, B=C.business||{};
 var $=function(i){return document.getElementById(i);};
-$('url').value=location.href.replace(/qr\.html.*$/,'');
+var SHOP=(/[?&]shop=([a-z0-9-]+)/.exec(location.search)||[])[1]||C.shop||null;
+function shopLink(){ if(!SHOP) return location.href.replace(/qr\.html.*$/,'');
+  return C.baseDomain ? 'https://'+SHOP+'.'+C.baseDomain+'/' : location.origin+'/'+SHOP; }
+$('url').value=shopLink();
 $('title').value=B.name||'';
 $('color').value=(C.colors&&C.colors.primary)||'#d62828';
 function qr(text){ var q=qrcode(0,'M'); q.addData(unescape(encodeURIComponent(text))); q.make(); return q; }
@@ -65,11 +68,11 @@ function draw(){
 function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 function save(canvas,name){ var a=document.createElement('a'); a.download=name; a.href=canvas.toDataURL('image/png'); document.body.appendChild(a); a.click(); a.remove(); }
 ['url','title','color','sub','sub2'].forEach(function(i){ $(i).addEventListener('input',draw); });
-$('dl').onclick=function(){ save($('cv'),'affiche-qr.png'); };
+$('dl').onclick=function(){ save($('cv'),'affiche-qr'+(SHOP?'-'+SHOP:'')+'.png'); };
 $('dlq').onclick=function(){ var c=document.createElement('canvas'); c.width=c.height=1000; drawQR(c.getContext('2d'),qr($('url').value),0,0,1000); save(c,'qr.png'); };
 draw();
-if (C.supabase && C.supabase.url && C.shop) {
-  fetch(C.supabase.url.replace(/\/$/,'') + '/rest/v1/shops?id=eq.' + encodeURIComponent(C.shop) + '&select=settings', { headers: { apikey: C.supabase.key } })
+if (C.supabase && C.supabase.url && SHOP) {
+  fetch(C.supabase.url.replace(/\/$/,'') + '/rest/v1/shops?id=eq.' + encodeURIComponent(SHOP) + '&select=settings', { headers: { apikey: C.supabase.key } })
     .then(function(r){ return r.json(); }).then(function(rows){ var st = rows[0] && rows[0].settings || {};
       if (st.business && st.business.name && !$('title').value) $('title').value = st.business.name;
       if (st.colors && st.colors.primary) $('color').value = st.colors.primary; draw(); }).catch(function(){});
