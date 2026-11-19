@@ -1,4 +1,4 @@
-/* End-to-end tests. Run:  node tests/e2e.js   (needs: npm i playwright; optional: jsqr pngjs)
+/* End-to-end tests. Static demo mode (no database). Run:  node tests/e2e.js   (needs: npm i playwright; optional: jsqr pngjs)
    Serves the folder on :8765, drives Chromium as a phone, writes tests/screenshots/ + tests/report.md */
 const { chromium, devices } = require('playwright');
 const http = require('http'), fs = require('fs'), path = require('path');
@@ -172,44 +172,6 @@ async function run() {
   ['1 × Ensemble jogging oversize (Taille: M, Couleur: Noir) : 4 500 DA', 'Wilaya : 11 - Tamanrasset', 'Mode : Bureau (stop desk)', 'Livraison : 1 000 DA', 'Tél : 0770 12 34 56', '*Total : 12 500 DA*']
     .forEach(s => ok(msg.includes(s), 'shop message has: ' + s));
   fs.writeFileSync(path.join(SHOTS, 'message-shop.txt'), msg);
-  ok(!page.errors.length, 'no JS errors: ' + page.errors.join(' | '));
-  await page.context().close();
-
-  /* 4. Admin */
-  current = 'Admin: edit, options parser, preview, export';
-  console.log(current);
-  page = await newPage(browser);
-  page.on('dialog', d => d.accept());
-  await page.goto(BASE + 'admin.html');
-  await shot(page, '10-admin');
-  const rt = await page.evaluate(() => {
-    const A = window.__admin, bad = [];
-    [window.CONFIG].forEach(c => c.items.forEach(it => { if (!it.variants) return;
-      const back = A.textToVar(A.varToText(it.variants)); if (JSON.stringify(back) !== JSON.stringify(it.variants)) bad.push(it.id); }));
-    return { bad, p: A.textToVar('Couleur|اللون: Noir|أسود #111111=900, Rouge+50!\nSupp*: Œuf+50'), f: A.parseFees(800, '16=500, 9=450') };
-  });
-  eq(rt.bad.join(','), '', 'options text round-trips for every demo item');
-  eq(JSON.stringify(rt.p), JSON.stringify([{ name: 'Couleur', name_ar: 'اللون', choices: [{ label: 'Noir', label_ar: 'أسود', price: 900, color: '#111111' }, { label: 'Rouge', add: 50, soldOut: true }] }, { name: 'Supp', multi: true, choices: [{ label: 'Œuf', add: 50 }] }]), 'options parser');
-  eq(JSON.stringify(rt.f), '{"16":500,"09":450,"default":800}', 'per-wilaya fee parser');
-  const priceInput = page.locator('[data-p="items.9.price"]');
-  await priceInput.fill('180');
-  await page.fill('[data-p="business.name"]', 'Chez Test');
-  await page.locator('[data-a=itemadd]').first().click();
-  const n = await page.evaluate(() => window.__admin.get().items.length - 1);
-  await page.fill(`[data-p="items.${n}.name"]`, 'Pizza Spéciale'); await page.fill(`[data-p="items.${n}.price"]`, '1200');
-  await page.fill(`[data-a=vars][data-i="${n}"]`, 'Taille: M=1200, L=1600');
-  await page.locator(`[data-p="items.${n}.name"]`).blur();
-  const [pv] = await Promise.all([page.context().waitForEvent('page'), page.click('#b-preview')]);
-  await pv.waitForLoadState();
-  ok(N(await pv.locator('h1').innerText()) === 'Chez Test', 'preview shows edited name');
-  ok(N(await itemEl(pv, 'Frites').innerText()).includes('180 DA'), 'preview shows edited price');
-  ok(N(await itemEl(pv, 'Pizza Spéciale').innerText()).includes('1 200 DA'), 'preview shows new item');
-  await pv.close();
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#b-export')]);
-  const txt = fs.readFileSync(await dl.path(), 'utf8'); const w = {}; new Function('window', txt)(w);
-  eq(w.CONFIG.business.name, 'Chez Test', 'exported config.js is valid and has edits');
-  eq(w.CONFIG.items[n].id, 'pizza-speciale', 'new item gets clean id');
-  eq(JSON.stringify(w.CONFIG.items[n].variants), JSON.stringify([{ name: 'Taille', choices: [{ label: 'M', price: 1200 }, { label: 'L', price: 1600 }] }]), 'new item options exported');
   ok(!page.errors.length, 'no JS errors: ' + page.errors.join(' | '));
   await page.context().close();
 

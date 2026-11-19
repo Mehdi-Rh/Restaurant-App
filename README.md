@@ -1,70 +1,56 @@
 # WhatsApp Order Template
 
-A menu or catalog site. The customer picks items and taps a button, and the order arrives on WhatsApp.
-No backend and no fees. About 45 KB, loads in about 2 s on slow 3G.
+A menu or catalog site. The customer picks items and the order arrives on WhatsApp.
+The client edits items and photos from their phone (`/admin.html`). The data lives in Supabase (free tier).
 
-**Demos:** `demos/bahia-pizza/` (restaurant) · `demos/lina-style/` (clothing shop)
+**Demos (no database):** `demos/bahia-pizza/` · `demos/lina-style/`
 
-## Files
+## One-time setup (you, ~10 min)
 
-| File | What it is |
-|---|---|
-| `config.js` | **The only file you edit per client** |
-| `index.html` | The shop page (edit only the `<title>`) |
-| `admin.html` | Client edits items/prices → exports a new `config.js` |
-| `qr.html` | Printable QR poster for the client's link |
-| `app.js`, `style.css`, `wilayas.js`, `lib/` | Don't touch |
+1. On **supabase.com**, create a new project. Pick the region closest to Algeria (Paris or Frankfurt).
+2. Open **SQL Editor**, paste [`supabase/schema.sql`](supabase/schema.sql) and click **Run**.
+3. Get your **Project URL** and **anon public key** from **Project Settings → API**.
+   *Never* put the `service_role` key anywhere.
 
-## New client in ~30 min
+One Supabase project holds all your clients.
 
-1. **Copy** this folder → `client-name/`. Delete `demos/` and `tests/`.
-2. **Open `admin.html`** locally (double-click it, or run `npx serve`).
-   - Commerce: name, WhatsApp (`213…`, without the `0`), logo, colors.
-   - Type: *Restaurant* or *Boutique*.
-   - Untick **Mode démo**.
-   - Livraison: leave wilayas empty for all 58, or put `31` for Oran only. Set fees (`16=500, 31=400`).
-   - Categories and items: name, price, photo, options.
-3. Click **Aperçu** to check, then **Exporter**. Replace `config.js` in the folder.
-4. Edit the `<title>` in `index.html` (it shows in link previews).
-5. **Deploy** (see below), then open `your-site/qr.html` to download the QR poster.
-6. Send the client a test order from your phone.
+## New client (~15 min)
 
-### Item options (admin, one line per group)
+1. Go to **Supabase → Authentication → Users → Add user**. Enter the client's email and a password, and tick *Auto confirm*.
+2. In the **SQL Editor**, run:
+   ```sql
+   select public.create_shop('pizza-oran', 'client@email.com', 'Pizza Oran', 'menu');  -- or 'shop'
+   ```
+3. Copy this repo (use it as a template on GitHub), then edit `config.js`:
+   ```js
+   window.CONFIG = { supabase: { url: "https://xxxx.supabase.co", key: "anon-key" }, shop: "pizza-oran" };
+   ```
+4. In **Netlify → Add new site → Import from Git**, pick the repo and click **Deploy**. Every push redeploys it.
+5. Open `site/admin.html`, log in as the client, and fill **Boutique** (WhatsApp number!) and the **Articles**.
+6. Print the QR poster from `site/qr.html`. Send yourself a test order.
 
-```
-Taille: M=600, L=900          → "=" sets the price
-Sauce: Algérienne, Blanche    → free choice
-Suppléments*: Fromage+80      → "*" allows several, "+" adds to the price
-Couleur: Noir|أسود #111111    → "|" Arabic label, "#" color dot
-XL!                           → "!" means sold out
-```
+**Shortcut:** load demo data into a shop:
+`node tools/config-to-sql.js demos/bahia-pizza/config.js pizza-oran > seed.sql`, then paste it in the SQL Editor.
 
-## Deploy (free)
+## What the client does (admin)
 
-**Netlify Drop (easiest):** go to app.netlify.com/drop and drag the folder. Done.
-Then go to Site settings → Change site name → `bahia-pizza.netlify.app`.
-**Update later:** Deploys → drag the folder again.
+- **Articles:** tap the switch to mark an item sold out. Tap the item to edit it, or **+** to add one with a photo taken by the phone.
+- **Catégories:** add, rename and reorder.
+- **Boutique:** name, WhatsApp, logo, colors, delivery zones and fees.
 
-**Vercel:** `npx vercel` in the folder (choose "Other", no build).
+Photos are compressed on the phone, to about 100 KB plus a 20 KB thumbnail. The free tier's 1 GB holds about 8,000 photos.
 
-**Custom domain** (optional, paid): add it in Netlify → Domain settings.
+## Good to know
 
-## Client updates prices alone
-
-The client opens `their-site/admin.html`, edits, and clicks **Exporter**. They send you the `config.js`, or drag it to Netlify themselves if you give them access.
-(The admin page can't break the live site. It only produces a file.)
+- **Free Supabase pauses after 7 days without visits.** To prevent it, copy `supabase/keepalive.yml` to `.github/workflows/keepalive.yml` (GitHub → Add file → Create new file). It then pings the database daily.
+- The menu is cached on customers' phones, so return visits open instantly, even offline.
+- Security: a client can only edit their own shop and photos. This is enforced by the database rules in `schema.sql`.
 
 ## Tests
 
 ```
-npm i playwright jsqr pngjs
-node tests/e2e.js
+npm i playwright pngjs jsqr
+node tests/e2e.js        # demos: cart, FR/AR, fees, WhatsApp message, QR, 3G speed
+node tests/e2e-live.js   # admin + Supabase (simulated): login, photos, options, security
 ```
-These run 85 checks on a phone-sized browser: FR/AR, cart math, fees, phone validation, WhatsApp message, admin, QR, and 3G speed.
-Results go to `tests/report.md` and screenshots to `tests/screenshots/`.
-
-## Notes
-
-- Photos are optional, and items show an emoji tile without one. Photos uploaded in admin are resized to about 15 KB each.
-- In demo mode, WhatsApp asks which contact to send to, so no real number is used.
-- Customer details and the cart are saved on the customer's phone for the next order.
+The database rules are tested with `supabase/test_rls.sql` on a local Postgres.

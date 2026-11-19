@@ -10,14 +10,18 @@
     }
   } catch (e) {}
 
-  var B = C.business || {};
-  var D = C.delivery || {};
   var W = window.WILAYAS || [];
-  var ITEMS = C.items || [];
-  var CATS = C.categories || [];
+  var B, D, ITEMS, CATS, OPTS, allowedW;
+  function applyConfig(c) {
+    C = c; B = C.business || {}; D = C.delivery || {};
+    ITEMS = C.items || []; CATS = C.categories || [];
+    OPTS = D.options && D.options.length ? D.options : [{ id: 'home', label: 'Livraison', label_ar: 'توصيل', fee: 0, address: true }];
+    allowedW = (D.wilayas && D.wilayas.length) ? W.filter(function (w) { return D.wilayas.indexOf(w[0]) >= 0; }) : W;
+  }
+  applyConfig(C);
 
   /* ---------- storage ---------- */
-  var NS = 'wo_' + String(C.id || B.name || 'shop').replace(/\W+/g, '_') + '_';
+  var NS = 'wo_' + String(C.shop || C.id || B.name || 'shop').replace(/\W+/g, '_') + '_';
   function sget(k, d) { try { var v = localStorage.getItem(NS + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
   function sset(k, v) { try { localStorage.setItem(NS + k, JSON.stringify(v)); } catch (e) {} }
 
@@ -44,7 +48,7 @@
       reopen: 'Rouvrir WhatsApp', finish: 'Terminer et vider le panier', freeAbove: 'Livraison gratuite dès',
       minOrder: 'Commande minimum', demo: 'Démo : choisissez un contact dans WhatsApp, rien n’est envoyé au commerce.',
       required1: 'obligatoire', popular: 'Populaire', newOrder: 'Nouvelle commande', customer: 'Client', addr: 'Adresse',
-      noteL: 'Note', tel: 'Tél', items: 'article(s)', addTo: 'Ajouter au panier', fee: 'Frais'
+      offline: 'Connexion impossible. Vérifiez votre internet.', retry: 'Réessayer', noteL: 'Note', tel: 'Tél', items: 'article(s)', addTo: 'Ajouter au panier', fee: 'Frais'
     },
     ar: {
       add: 'أضف', from: 'من', viewCart: 'عرض السلة', cart: 'طلبك', empty: 'سلتك فارغة.',
@@ -56,7 +60,7 @@
       reopen: 'افتح واتساب مجددًا', finish: 'إنهاء وإفراغ السلة', freeAbove: 'توصيل مجاني ابتداءً من',
       minOrder: 'الحد الأدنى للطلب', demo: 'نسخة تجريبية: اختر أي جهة اتصال، لا يُرسل شيء للمحل.',
       required1: 'إجباري', popular: 'الأكثر طلبًا', newOrder: 'طلب جديد', customer: 'الزبون', addr: 'العنوان',
-      noteL: 'ملاحظة', tel: 'الهاتف', items: 'منتج', addTo: 'أضف إلى السلة', fee: 'المصاريف'
+      offline: 'تعذر الاتصال. تحقق من الإنترنت.', retry: 'إعادة المحاولة', noteL: 'ملاحظة', tel: 'الهاتف', items: 'منتج', addTo: 'أضف إلى السلة', fee: 'المصاريف'
     }
   };
   function t(k, l) { var d = T[l || lang] || T.fr; return d[k] || T.fr[k] || k; }
@@ -119,8 +123,6 @@
   function cleanCart() { cart = cart.filter(function (l) { return byId(l.id) && l.qty > 0; }); }
 
   /* ---------- delivery ---------- */
-  var OPTS = D.options && D.options.length ? D.options : [{ id: 'home', label: 'Livraison', label_ar: 'توصيل', fee: 0, address: true }];
-  var allowedW = (D.wilayas && D.wilayas.length) ? W.filter(function (w) { return D.wilayas.indexOf(w[0]) >= 0; }) : W;
   function curOpt() { for (var i = 0; i < OPTS.length; i++) if (OPTS[i].id === cust.opt) return OPTS[i]; return OPTS[0]; }
   function curWilaya() {
     if (allowedW.length === 1) return allowedW[0][0];
@@ -145,7 +147,8 @@
   var root = document.getElementById('app');
   function hue(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function thumb(it, big) {
-    if (it.img) return '<img class="ph" loading="lazy" decoding="async" alt="" src="' + esc(it.img) + '">';
+    if (it.img) return '<img class="ph" loading="lazy" decoding="async" alt="" src="' + esc(big ? it.img : (it.thumb || it.img)) + '"' +
+      (it.thumb && !big ? ' onerror="this.onerror=null;this.src=\'' + esc(it.img) + '\'"' : '') + '>';
     return '<div class="ph emo" style="--h:' + hue(it.id || it.name || '') + '">' + esc(it.emoji || (catOf(it) || {}).icon || '🛍️') + '</div>';
   }
   function catOf(it) { for (var i = 0; i < CATS.length; i++) if (CATS[i].id === it.cat) return CATS[i]; return null; }
@@ -167,6 +170,15 @@
     document.body.className = 'mode-' + (C.mode || 'menu') + (view ? ' noscroll' : '');
 
     var h = '';
+    if (!live && !ITEMS.length && !(C.supabase && C.supabase.url)) {
+      root.innerHTML = '<div class="state"><p>⚙️ Configurez <code>config.js</code> (supabase.url, supabase.key, shop).</p></div>';
+      return;
+    }
+    if (loading || loadError) {
+      root.innerHTML = '<div class="state">' + (loading ? '<div class="spin"></div>' :
+        '<p>📶 ' + esc(t('offline')) + '</p><button class="cta" data-act="retry">' + esc(t('retry')) + '</button>') + '</div>';
+      return;
+    }
     if (C.demo) h += '<div class="demo">' + esc(t('demo')) + '</div>';
     h += '<header class="hero"><div class="wrap hrow">' + logo() +
       '<div class="hinfo"><h1>' + esc(L(B, 'name')) + '</h1>' +
@@ -416,6 +428,7 @@
     }
     else if (a === 'opt') { cust.opt = el.getAttribute('data-o'); render(); }
     else if (a === 'send') send();
+    else if (a === 'retry') { loading = true; loadError = false; render(); fetchData(); }
     else if (a === 'finish') { cart = []; save(); sset('sent', null); view = null; render(); }
   });
   root.addEventListener('input', function (e) {
@@ -428,6 +441,47 @@
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && view) { view = null; render(); } });
 
   // back from WhatsApp web: show the "order ready" screen again
+  /* ---------- live data from Supabase (cache first, then refresh) ---------- */
+  function fromDb(row, base) {
+    var st = row.settings || {};
+    var c = {};
+    Object.keys(st).forEach(function (k) { c[k] = st[k]; });
+    c.shop = base.shop; c.supabase = base.supabase;
+    c.categories = (row.categories || []).sort(function (a, b) { return a.position - b.position; })
+      .map(function (k) { return { id: k.id, name: k.name, name_ar: k.name_ar, icon: k.icon }; });
+    c.items = (row.items || []).filter(function (i) { return !i.hidden; })
+      .sort(function (a, b) { return a.position - b.position || (a.name > b.name ? 1 : -1); })
+      .map(function (i) {
+        return { id: i.id, cat: i.category_id, name: i.name, name_ar: i.name_ar, desc: i.description, desc_ar: i.description_ar,
+          price: i.price, img: i.photo || null, thumb: i.photo ? i.photo.replace(/(\.\w+)$/, '_t$1') : null,
+          emoji: i.emoji, variants: i.variants || [], soldOut: !i.available, popular: i.popular };
+      });
+    return c;
+  }
+  var live = C.supabase && C.supabase.url && C.shop;
+  var loading = false, loadError = false;
+  if (live) {
+    var base = { shop: C.shop, supabase: C.supabase };
+    var cached = sget('data', null);
+    if (cached) applyConfig(cached); else loading = true;
+    var url = C.supabase.url.replace(/\/$/, '') + '/rest/v1/shops?id=eq.' + encodeURIComponent(C.shop) +
+      '&select=settings,categories(id,name,name_ar,icon,position),items(id,category_id,name,name_ar,description,description_ar,price,photo,emoji,variants,available,popular,hidden,position)';
+    var fetchData = function () {
+      fetch(url, { headers: { apikey: C.supabase.key } })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (rows) {
+          if (!rows.length) throw new Error('shop not found');
+          var fresh = fromDb(rows[0], base);
+          loading = false; loadError = false;
+          if (JSON.stringify(fresh) !== JSON.stringify(sget('data', null))) { sset('data', fresh); applyConfig(fresh); cleanCart(); save(); render(); }
+          else if (!cached) render();
+        })
+        .catch(function () { loading = false; loadError = !sget('data', null); render(); });
+    };
+    fetchData();
+    window.addEventListener('online', function () { if (loadError) fetchData(); });
+  }
+
   var sent = sget('sent', null);
   if (sent && cart.length && Date.now() - sent.at < 30 * 60 * 1000) view = { type: 'done', url: sent.url };
 
