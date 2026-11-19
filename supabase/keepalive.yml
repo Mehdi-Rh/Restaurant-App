@@ -1,0 +1,23 @@
+# Free Supabase projects pause after 7 days without activity.
+# This pings the database once a day using the public URL/key from config.js.
+name: Keep Supabase awake
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ping Supabase
+        run: |
+          node -e '
+            const w = {}; new Function("window", require("fs").readFileSync("config.js", "utf8"))(w);
+            const c = w.CONFIG || {};
+            if (!c.supabase || !c.supabase.url) { console.log("No Supabase configured, skipping."); process.exit(0); }
+            fetch(c.supabase.url.replace(/\/$/, "") + "/rest/v1/shops?select=id&limit=1",
+              { headers: { apikey: c.supabase.key, Authorization: "Bearer " + c.supabase.key } })
+              .then(r => { console.log("Supabase answered", r.status); process.exit(r.ok ? 0 : 1); })
+              .catch(e => { console.error(e); process.exit(1); });
+          '
