@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Admin · Menu / Catalogue</title>
+<style>
+:root{--p:#2563eb;--line:#e5e7eb;--muted:#6b7280}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#f3f4f6;color:#111}
+header{position:sticky;top:0;z-index:5;background:#111827;color:#fff;padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+header h1{font-size:17px;margin:0;flex:1;min-width:140px}
+.wrap{max-width:860px;margin:0 auto;padding:12px 16px 80px}
+.box{background:#fff;border-radius:12px;padding:14px;margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.box h2{font-size:16px;margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+label{display:block;font-size:12.5px;font-weight:600;color:#374151}
+input,select,textarea{width:100%;font:inherit;font-size:15px;border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;margin-top:3px;background:#fff}
+input[type=checkbox]{width:auto;margin:0 4px 0 0;vertical-align:-2px}
+input[type=color]{padding:2px;height:38px}
+textarea{min-height:60px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+[dir=rtl]{text-align:right}
+button,.btn{font:inherit;font-size:14px;border:1px solid #d1d5db;background:#fff;color:#111;border-radius:8px;padding:7px 12px;cursor:pointer;text-decoration:none;display:inline-block}
+.pri{background:var(--p);border-color:var(--p);color:#fff;font-weight:600}
+.wa{background:#16a34a;border-color:#16a34a;color:#fff;font-weight:600}
+.del{color:#b91c1c}
+.item{border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px}
+.item.out{background:#fafafa}
+.ihead{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.ihead b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;background:#f3f4f6;display:grid;place-items:center;font-size:24px;flex:none}
+.acts{display:flex;gap:4px;flex-wrap:wrap}
+.acts button{padding:4px 8px}
+.help{font-size:12.5px;color:var(--muted);margin:4px 0 0}
+.help code{background:#f3f4f6;border-radius:4px;padding:0 4px}
+.row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.row>*{flex:1;min-width:120px}
+.catrow{display:grid;grid-template-columns:70px 1fr 1fr 1fr auto;gap:6px;align-items:end;margin-top:6px}
+@media(max-width:560px){.catrow{grid-template-columns:60px 1fr 1fr}.catrow .cid{display:none}}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:.2s;pointer-events:none}
+.toast.on{opacity:1}
+.filter{max-width:220px}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚙️ Admin</h1>
+  <button id="b-preview">👁️ Aperçu</button>
+  <button id="b-import">📂 Importer</button>
+  <button id="b-export" class="pri">⬇️ Exporter config.js</button>
+  <input type="file" id="f-import" accept=".js,.json" hidden>
+</header>
+<div class="wrap">
+  <div class="box">
+    <p class="help" style="margin:0">Modifiez, cliquez <b>Aperçu</b>, puis <b>Exporter</b>. Remplacez <code>config.js</code> sur le site (Netlify : glisser le dossier à nouveau). Vos modifications sont gardées dans ce navigateur jusqu'à l'export.
+    <button id="b-reset" style="margin-top:6px">↺ Annuler les modifications non exportées</button></p>
+  </div>
+  <div id="ui"></div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="wilayas.js"></script>
+<script src="config.js"></script>
+<script>
+(function(){
+'use strict';
+var DRAFT='wo_admin_draft';
+var S;
+try{ S=JSON.parse(localStorage.getItem(DRAFT)||'null'); }catch(e){}
+if(!S) S=JSON.parse(JSON.stringify(window.CONFIG||{}));
+norm();
+var filter='';
+
+function norm(){
+  S.business=S.business||{}; S.colors=S.colors||{}; S.delivery=S.delivery||{};
+  S.delivery.options=S.delivery.options||[]; S.categories=S.categories||[]; S.items=S.items||[];
+  S.languages=S.languages||['fr','ar']; S.mode=S.mode||'menu';
+}
+function persist(){ try{ localStorage.setItem(DRAFT,JSON.stringify(S)); }catch(e){ toast('⚠️ Stockage plein : exportez maintenant'); } }
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(function(){t.classList.remove('on');},2200);}
+function slug(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||('x'+Date.now().toString(36));}
+function get(path){return path.split('.').reduce(function(o,k){return o==null?o:o[k];},S);}
+function set(path,v){var ks=path.split('.'),o=S;for(var i=0;i<ks.length-1;i++){if(o[ks[i]]==null)o[ks[i]]={};o=o[ks[i]];}o[ks[ks.length-1]]=v;}
+
+/* ---- variants <-> text ----
+   Taille: M=600, L=900          (=prix remplace)
+   Sauce: Algérienne, Blanche
+   Suppléments*: Fromage+80      (* = choix multiple, +ajout)
+   Couleur: Noir|أسود #111111    (|arabe, #couleur, ! = épuisé) */
+function varToText(vs){return (vs||[]).map(function(v){
+  return v.name+(v.name_ar?'|'+v.name_ar:'')+(v.multi?'*':'')+': '+v.choices.map(function(c){
+    return c.label+(c.label_ar?'|'+c.label_ar:'')+(c.color?' '+c.color:'')+(c.price!=null&&c.price!==''?'='+c.price:'')+(c.add?'+'+c.add:'')+(c.soldOut?'!':'');
+  }).join(', ');}).join('\n');}
+function textToVar(s){
+  return String(s||'').split('\n').map(function(line){
+    var m=line.match(/^([^:]+):(.*)$/); if(!m) return null;
+    var head=m[1].trim(), multi=/\*$/.test(head); head=head.replace(/\*$/,'').trim();
+    var hn=head.split('|'), v={name:hn[0].trim()}; if(hn[1]) v.name_ar=hn[1].trim(); if(multi) v.multi=true; v.choices=[];
+    m[2].split(',').forEach(function(tok){
+      tok=tok.trim(); if(!tok) return; var c={}, x;
+      if(/!$/.test(tok)){c.soldOut=true;tok=tok.slice(0,-1).trim();}
+      if((x=tok.match(/\+\s*(\d+)$/))){c.add=+x[1];tok=tok.slice(0,x.index).trim();}
+      if((x=tok.match(/=\s*(\d+)$/))){c.price=+x[1];tok=tok.slice(0,x.index).trim();}
+      if((x=tok.match(/\s(#[0-9a-fA-F]{3,8})$/))){c.color=x[1];tok=tok.slice(0,x.index).trim();}
+      var ln=tok.split('|'); c.label=ln[0].trim(); if(ln[1]) c.label_ar=ln[1].trim();
+      // keep key order tidy
+      var o={label:c.label}; ['label_ar','price','add','color','soldOut'].forEach(function(k){if(c[k]!=null)o[k]=c[k];});
+      if(o.label) v.choices.push(o);
+    });
+    return v.choices.length?v:null;
+  }).filter(Boolean);
+}
+function feesToText(f){ if(f==null||typeof f==='number') return ''; return Object.keys(f).filter(function(k){return k!=='default';}).map(function(k){return k+'='+f[k];}).join(', '); }
+function feeDefault(f){ return f==null?0:typeof f==='number'?f:(f['default']||0); }
+function parseFees(def,txt){
+  var o={}, any=false;
+  String(txt||'').split(/[,\n;]/).forEach(function(p){var m=p.trim().match(/^(\d{1,2})\s*[=:]\s*(\d+)$/);if(m){o[('0'+m[1]).slice(-2)]=+m[2];any=true;}});
+  if(!any) return +def||0;
+  o['default']=+def||0; return o;
+}
+
+function inp(path,label,opts){
+  opts=opts||{}; var v=get(path);
+  var t=opts.type||'text';
+  if(t==='checkbox') return '<label><input type="checkbox" data-p="'+path+'"'+(v?' checked':'')+'>'+esc(label)+'</label>';
+  if(t==='textarea') return '<label>'+esc(label)+'<textarea data-p="'+path+'"'+(opts.ar?' dir="rtl"':'')+'>'+esc(v)+'</textarea></label>';
+  return '<label>'+esc(label)+'<input type="'+t+'" data-p="'+path+'"'+(t==='number'?' data-num inputmode="numeric"':'')+(opts.ar?' dir="rtl"':'')+(opts.ph?' placeholder="'+esc(opts.ph)+'"':'')+' value="'+esc(v)+'"></label>';
+}
+
+function render(){
+  var h='';
+  // business
+  h+='<div class="box"><h2>🏪 Commerce</h2><div class="grid">'+
+    inp('business.name','Nom')+inp('business.name_ar','Nom (arabe)',{ar:1})+
+    inp('business.tagline','Slogan')+inp('business.tagline_ar','Slogan (arabe)',{ar:1})+
+    inp('business.whatsapp','WhatsApp (213…)',{type:'tel',ph:'213555123456'})+inp('business.instagram','Instagram (sans @)')+
+    inp('business.hours','Horaires / info')+inp('business.hours_ar','Horaires (arabe)',{ar:1})+
+    inp('business.address','Adresse')+inp('business.address_ar','Adresse (arabe)',{ar:1})+
+    '<div><label>Logo (emoji ou image)<div class="row" style="margin:0"><input data-p="business.logo" value="'+esc(S.business.logo)+'"><button data-a="logo-up" style="flex:0;margin-top:3px">📷</button></div></label></div>'+
+    '<label>Type<select data-p="mode"><option value="menu"'+(S.mode==='menu'?' selected':'')+'>Restaurant (menu)</option><option value="shop"'+(S.mode==='shop'?' selected':'')+'>Boutique (catalogue)</option></select></label>'+
+    '<label>Couleur principale<input type="color" data-p="colors.primary" value="'+esc(S.colors.primary||'#d62828')+'"></label>'+
+    '<label>Couleur accent<input type="color" data-p="colors.accent" value="'+esc(S.colors.accent||'#f77f00')+'"></label>'+
+    '<label>Langue par défaut<select data-p="lang"><option value="fr"'+(S.lang!=='ar'?' selected':'')+'>Français</option><option value="ar"'+(S.lang==='ar'?' selected':'')+'>العربية</option></select></label>'+
+    inp('demo','Mode démo (rien n\'est envoyé)',{type:'checkbox'})+
+    '</div></div>';
+
+  // delivery
+  var D=S.delivery;
+  h+='<div class="box"><h2>🚚 Livraison</h2><div class="grid">'+
+    '<label>Wilayas servies<input data-a="wilayas" value="'+esc((D.wilayas||[]).join(', '))+'" placeholder="vide = 58 wilayas ; ex : 31"></label>'+
+    inp('delivery.freeAbove','Gratuite dès (DA, 0 = non)',{type:'number'})+
+    inp('delivery.minOrder','Commande minimum (DA)',{type:'number'})+'</div>';
+  D.options.forEach(function(o,i){
+    h+='<div class="item"><div class="row">'+inp('delivery.options.'+i+'.label','Option')+inp('delivery.options.'+i+'.label_ar','Option (arabe)',{ar:1})+
+      '<label>Prix (DA)<input data-a="feedef" data-i="'+i+'" inputmode="numeric" value="'+feeDefault(o.fee)+'"></label>'+
+      '<label>Prix par wilaya<input data-a="feewil" data-i="'+i+'" value="'+esc(feesToText(o.fee))+'" placeholder="16=500, 31=400"></label></div>'+
+      '<div class="row" style="margin-top:6px"><label><input type="checkbox" data-a="optaddr" data-i="'+i+'"'+(o.address!==false?' checked':'')+'>Demander l\'adresse</label>'+
+      '<span style="flex:0"><button class="del" data-a="optdel" data-i="'+i+'">Supprimer</button></span></div></div>';
+  });
+  h+='<p><button data-a="optadd">+ Option de livraison</button></p></div>';
+
+  // categories
+  h+='<div class="box"><h2>🗂️ Catégories <button data-a="catadd">+ Catégorie</button></h2>';
+  S.categories.forEach(function(c,i){
+    h+='<div class="catrow">'+inp('categories.'+i+'.icon','Icône')+inp('categories.'+i+'.name','Nom')+inp('categories.'+i+'.name_ar','Arabe',{ar:1})+
+      '<span class="acts cid"><button data-a="catup" data-i="'+i+'">↑</button><button class="del" data-a="catdel" data-i="'+i+'">✕</button></span></div>';
+  });
+  h+='</div>';
+
+  // items
+  h+='<div class="box"><h2>🍽️ Articles ('+S.items.length+') <span class="row" style="flex:0 1 auto;margin:0"><input class="filter" id="flt" placeholder="🔎 Chercher" value="'+esc(filter)+'"><button data-a="itemadd" class="pri" style="flex:0">+ Article</button></span></h2>'+
+    '<p class="help">Options (une ligne par groupe) : <code>Taille: M=600, L=900</code> · <code>Sauce: Algérienne, Blanche</code> · <code>Suppléments*: Fromage+80</code> (* = plusieurs choix) · <code>Couleur: Noir|أسود #111111</code> · <code>!</code> = épuisé</p>';
+  S.items.forEach(function(it,i){
+    if(filter && (it.name+' '+(it.name_ar||'')).toLowerCase().indexOf(filter.toLowerCase())<0) return;
+    var b='items.'+i+'.';
+    h+='<div class="item'+(it.soldOut?' out':'')+'" id="it-'+i+'"><div class="ihead">'+
+      (it.img?'<img class="thumb" src="'+esc(it.img)+'" alt="">':'<span class="thumb">'+esc(it.emoji||'🛍️')+'</span>')+
+      '<b>'+esc(it.name||'(sans nom)')+' — '+(+it.price||0)+' DA</b><span class="acts">'+
+      '<button data-a="up" data-i="'+i+'" title="Monter">↑</button><button data-a="down" data-i="'+i+'" title="Descendre">↓</button>'+
+      '<button data-a="dup" data-i="'+i+'" title="Dupliquer">⧉</button><button class="del" data-a="del" data-i="'+i+'" title="Supprimer">✕</button></span></div>'+
+      '<div class="grid">'+inp(b+'name','Nom')+inp(b+'name_ar','Nom (arabe)',{ar:1})+inp(b+'price','Prix (DA)',{type:'number'})+
+      '<label>Catégorie<select data-p="'+b+'cat"><option value="">—</option>'+S.categories.map(function(c){return '<option value="'+esc(c.id)+'"'+(c.id===it.cat?' selected':'')+'>'+esc((c.icon||'')+' '+c.name)+'</option>';}).join('')+'</select></label>'+
+      inp(b+'desc','Description')+inp(b+'desc_ar','Description (arabe)',{ar:1})+
+      '<div><label>Photo</label><div class="row" style="margin:0"><button data-a="img" data-i="'+i+'" style="margin-top:3px">📷 Choisir</button>'+(it.img?'<button class="del" data-a="imgdel" data-i="'+i+'" style="margin-top:3px">Retirer</button>':'')+'</div></div>'+
+      inp(b+'emoji','Emoji (si pas de photo)')+
+      '<div>'+inp(b+'soldOut','Épuisé',{type:'checkbox'})+inp(b+'popular','Populaire',{type:'checkbox'})+inp(b+'hidden','Masqué',{type:'checkbox'})+'</div>'+
+      '</div><label style="margin-top:8px">Options<textarea data-a="vars" data-i="'+i+'" rows="2" placeholder="Taille: M=600, L=900">'+esc(varToText(it.variants))+'</textarea></label></div>';
+  });
+  h+='<p><button data-a="itemadd" class="pri">+ Article</button></p></div>';
+  var y=window.scrollY; document.getElementById('ui').innerHTML=h; window.scrollTo(0,y);
+}
+
+/* image → resized webp/jpeg data URL (~15 KB) */
+function pickImage(max,cb){
+  var f=document.createElement('input'); f.type='file'; f.accept='image/*';
+  f.onchange=function(){ var file=f.files[0]; if(!file) return; var r=new FileReader();
+    r.onload=function(){ var im=new Image(); im.onload=function(){
+      var s=Math.min(1,max/Math.max(im.width,im.height)), c=document.createElement('canvas');
+      c.width=Math.round(im.width*s); c.height=Math.round(im.height*s); c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+      var d=c.toDataURL('image/webp',0.62); if(d.indexOf('data:image/webp')!==0) d=c.toDataURL('image/jpeg',0.7);
+      cb(d); toast('Photo ajoutée ('+Math.round(d.length*0.75/1024)+' Ko)'); }; im.src=r.result; };
+    r.readAsDataURL(file); };
+  f.click();
+}
+
+var ui=document.getElementById('ui');
+ui.addEventListener('input',function(e){
+  var el=e.target, p=el.getAttribute('data-p'), a=el.getAttribute('data-a'), i=+el.getAttribute('data-i');
+  if(el.id==='flt'){ filter=el.value; render(); var f=document.getElementById('flt'); f.focus(); f.setSelectionRange(f.value.length,f.value.length); return; }
+  if(p){
+    var v = el.type==='checkbox'?el.checked : el.hasAttribute('data-num') ? (el.value===''?0:+el.value) : el.value;
+    if(el.type==='checkbox' && !v){ var ks=p.split('.'),o=S; for(var k=0;k<ks.length-1;k++)o=o[ks[k]]; delete o[ks[ks.length-1]]; } else set(p,v);
+    var m=p.match(/^items\.(\d+)\.(name|price)$/);
+    if(m){ var row=document.getElementById('it-'+m[1]), itm=S.items[+m[1]]; if(row) row.querySelector('.ihead b').textContent=(itm.name||'(sans nom)')+' — '+(+itm.price||0)+' DA'; }
+  }
+  else if(a==='vars'){ S.items[i].variants=textToVar(el.value); if(!S.items[i].variants.length) delete S.items[i].variants; }
+  else if(a==='wilayas'){ S.delivery.wilayas=el.value.split(/[,\s]+/).filter(Boolean).map(function(x){return ('0'+x.replace(/\D/g,'')).slice(-2);}).filter(function(x){return x!=='00';}); }
+  else if(a==='feedef'||a==='feewil'){ var box=el.closest('.item'); S.delivery.options[i].fee=parseFees(box.querySelector('[data-a=feedef]').value, box.querySelector('[data-a=feewil]').value); }
+  else if(a==='optaddr'){ if(el.checked) delete S.delivery.options[i].address; else S.delivery.options[i].address=false; }
+  persist();
+});
+ui.addEventListener('change',function(e){ if(e.target.tagName==='SELECT'||e.target.type==='checkbox'){ if(e.target.getAttribute('data-p')==='mode'||/\.soldOut$/.test(e.target.getAttribute('data-p')||''))render(); } });
+ui.addEventListener('focusout',function(e){ var a=e.target.getAttribute('data-a'); var p=e.target.getAttribute('data-p')||'';
+  if(/^items\.\d+\.name$/.test(p)){ var i=+p.split('.')[1]; var it=S.items[i]; if(it.name&&(!it.id||/^new-/.test(it.id))){ it.id=uniq(slug(it.name)); persist(); } } });
+function uniq(id){ var ids=S.items.map(function(x){return x.id;}), n=id, k=2; while(ids.indexOf(n)>=0) n=id+'-'+(k++); return n; }
+ui.addEventListener('click',function(e){
+  var el=e.target.closest('[data-a]'); if(!el||el.tagName==='INPUT'||el.tagName==='TEXTAREA') return;
+  var a=el.getAttribute('data-a'), i=+el.getAttribute('data-i'), it=S.items;
+  if(a==='up'&&i>0){ it.splice(i-1,0,it.splice(i,1)[0]); }
+  else if(a==='down'&&i<it.length-1){ it.splice(i+1,0,it.splice(i,1)[0]); }
+  else if(a==='dup'){ var c=JSON.parse(JSON.stringify(it[i])); c.id=uniq(c.id||'item'); c.name+=' (copie)'; it.splice(i+1,0,c); }
+  else if(a==='del'){ if(!confirm('Supprimer « '+it[i].name+' » ?')) return; it.splice(i,1); }
+  else if(a==='itemadd'){ it.push({id:'new-'+Date.now().toString(36),cat:(S.categories[0]||{}).id||'',name:'',price:0}); filter=''; persist(); render(); var last=document.getElementById('it-'+(it.length-1)); if(last){ last.scrollIntoView({block:'center'}); last.querySelector('input').focus(); } return; }
+  else if(a==='img'){ pickImage(480,function(d){ it[i].img=d; persist(); render(); }); return; }
+  else if(a==='imgdel'){ delete it[i].img; }
+  else if(a==='logo-up'){ pickImage(240,function(d){ S.business.logo=d; persist(); render(); }); return; }
+  else if(a==='catadd'){ var name=prompt('Nom de la catégorie'); if(!name) return; S.categories.push({id:slug(name),name:name,icon:''}); }
+  else if(a==='catup'&&i>0){ S.categories.splice(i-1,0,S.categories.splice(i,1)[0]); }
+  else if(a==='catdel'){ if(!confirm('Supprimer la catégorie ? (les articles restent)')) return; S.categories.splice(i,1); }
+  else if(a==='optadd'){ S.delivery.options.push({id:'opt'+Date.now().toString(36),label:'Nouvelle option',fee:0}); }
+  else if(a==='optdel'){ S.delivery.options.splice(i,1); }
+  else return;
+  persist(); render();
+});
+
+function configText(){
+  // drop empty fields
+  var clean=JSON.parse(JSON.stringify(S,function(k,v){ return v===''?undefined:v; }));
+  return '// Généré par admin.html le '+new Date().toLocaleString('fr-FR')+'\nwindow.CONFIG = '+JSON.stringify(clean,null,2)+';\n';
+}
+document.getElementById('b-export').onclick=function(){
+  var txt=configText(), blob=new Blob([txt],{type:'text/javascript'}), a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='config.js'; document.body.appendChild(a); a.click(); a.remove();
+  toast('config.js exporté ('+Math.round(blob.size/1024)+' Ko)');
+};
+document.getElementById('b-preview').onclick=function(){
+  try{ localStorage.setItem('wo_preview',JSON.stringify(S)); }catch(e){ toast('⚠️ Trop de photos pour l\'aperçu'); return; }
+  window.open('index.html?preview=1','_blank');
+};
+document.getElementById('b-import').onclick=function(){ document.getElementById('f-import').click(); };
+document.getElementById('f-import').onchange=function(){
+  var f=this.files[0]; if(!f) return; var r=new FileReader();
+  r.onload=function(){ try{ var w={}; new Function('window',r.result+'\n;return window;')(w); if(!w.CONFIG) throw 0; S=w.CONFIG; norm(); persist(); render(); toast('Config importée'); }catch(e){ alert('Fichier invalide'); } };
+  r.readAsText(f);
+};
+document.getElementById('b-reset').onclick=function(){ if(!confirm('Revenir à la version en ligne ?')) return; localStorage.removeItem(DRAFT); S=JSON.parse(JSON.stringify(window.CONFIG||{})); norm(); render(); };
+window.__admin={get:function(){return S;},textToVar:textToVar,varToText:varToText,parseFees:parseFees,configText:configText};
+render();
+})();
+</script>
+</body>
+</html>
