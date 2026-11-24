@@ -1,3 +1,25 @@
 [build]
   publish = "."
   command = ""
+
+# Per-restaurant title, preview card, icon and app manifest (netlify/edge-functions/brand.js)
+[[edge_functions]]
+  function = "brand"
+  path = "/*"
+  excludedPath = ["/*.js", "/*.css", "/*.png", "/*.jpg", "/*.webp", "/*.svg", "/*.ico", "/lib/*", "/demos/*", "/tests/*", "/supabase/*", "/admin*", "/platform*", "/qr*"]
+
+# Every restaurant link (/bahia-pizza) is served by the same index.html. Real files win over this rule.
+[[redirects]]
+  from = "/:slug"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/:slug/"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/config.js"
+  [headers.values]
+    Cache-Control = "public, max-age=300"

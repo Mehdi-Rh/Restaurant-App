@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0f172a">
+<title>Plateforme · Restaurants</title>
+<style>
+:root{--p:#0f172a;--acc:#16a34a;--bg:#f1f5f9;--line:#e2e8f0;--muted:#64748b;--red:#dc2626;--r:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:#0f172a;padding-bottom:40px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,select{font:inherit;font-size:16px;width:100%;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff;color:inherit}
+.wrap{max-width:720px;margin:0 auto;padding:0 14px}
+.top{position:sticky;top:0;z-index:5;background:var(--p);color:#fff}
+.top .wrap{display:flex;align-items:center;gap:10px;height:56px}
+.top h1{font-size:17px;flex:1}
+.top button,.top a{color:#fff;font-size:14px;text-decoration:none;background:rgba(255,255,255,.12);border-radius:999px;padding:7px 12px}
+.login{min-height:100vh;display:grid;place-items:center;padding:24px}
+.login form{width:100%;max-width:360px;background:#fff;border-radius:18px;padding:24px}
+.login h1{font-size:22px}.login p{color:var(--muted);margin:4px 0 14px}
+label{display:block;font-weight:600;font-size:14px;margin-top:10px}
+label small{font-weight:400;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:999px;padding:10px 16px;font-weight:700;min-height:44px;background:#fff;border:1.5px solid var(--line);text-decoration:none;font-size:14px}
+.btn.pri{background:var(--p);color:#fff;border-color:var(--p)}
+.btn.green{background:var(--acc);color:#fff;border-color:var(--acc)}
+.btn.danger{color:var(--red);border-color:#fecaca}
+.btn[disabled]{opacity:.5}
+.err{color:var(--red);font-size:14px;margin-top:8px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}
+.kpis div{background:#fff;border-radius:12px;padding:10px;text-align:center}
+.kpis b{display:block;font-size:20px}.kpis small{color:var(--muted);font-size:12px}
+.card{background:#fff;border-radius:var(--r);padding:14px;margin-bottom:10px}
+.card h3{font-size:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card .sub{color:var(--muted);font-size:13px;margin-top:2px;word-break:break-all}
+.badge{font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px}
+.badge.on{background:#dcfce7;color:#166534}.badge.off{background:#fee2e2;color:#991b1b}
+.acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.search{margin:4px 0 10px}
+.done{background:#f0fdf4;border:1.5px solid #bbf7d0}
+.done pre{white-space:pre-wrap;font:14px/1.45 ui-monospace,Menlo,monospace;background:#fff;border-radius:10px;padding:10px;margin-top:8px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}.toast.bad{background:var(--red)}
+details summary{cursor:pointer;font-weight:700;padding:4px 0}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast"></div>
+<script src="config.js"></script>
+<script>
+(function () {
+'use strict';
+var C = window.CONFIG || {}, root = document.getElementById('app');
+var SB = (C.supabase && C.supabase.url || '').replace(/\/$/, ''), KEY = C.supabase && C.supabase.key;
+var SKEY = 'wo_admin';                         // same login as admin.html
+var sess = null; try { sess = JSON.parse(localStorage.getItem(SKEY) || 'null'); } catch (e) {}
+function saveSess() { try { if (sess) localStorage.setItem(SKEY, JSON.stringify(sess)); else localStorage.removeItem(SKEY); } catch (e) {} }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function toast(m, bad) { var t = document.getElementById('toast'); t.textContent = m; t.className = 'toast on' + (bad ? ' bad' : ''); clearTimeout(toast.h); toast.h = setTimeout(function () { t.className = 'toast'; }, 2600); }
+function $(s) { return root.querySelector(s); }
+
+function authCall(grant, body) {
+  return fetch(SB + '/auth/v1/token?grant_type=' + grant, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function (r) { return r.json().then(function (j) {
+      if (!r.ok) throw new Error(/invalid/i.test(j.error_description || j.msg || '') ? 'Email ou mot de passe incorrect' : (j.error_description || j.msg || 'Erreur de connexion'));
+      sess = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Math.floor(Date.now() / 1000) + (j.expires_in || 3600), user: { id: j.user && j.user.id, email: j.user && j.user.email } };
+      saveSess(); return sess;
+    }); });
+}
+function token() {
+  if (!sess) return Promise.reject(new Error('auth'));
+  if (sess.expires_at - 60 > Date.now() / 1000) return Promise.resolve(sess.access_token);
+  return authCall('refresh_token', { refresh_token: sess.refresh_token }).then(function (s) { return s.access_token; });
+}
+function call(method, path, body) {
+  return token().then(function (tk) {
+    return fetch(SB + path, { method: method, headers: { apikey: KEY, Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+  }).then(function (r) {
+    if (r.status === 401) { sess = null; saveSess(); render(); throw new Error('Session expirée'); }
+    return r.text().then(function (t) { var j = null; try { j = t ? JSON.parse(t) : null; } catch (e) {}
+      if (!r.ok) throw new Error((j && (j.error || j.message)) || ('Erreur ' + r.status)); return j; });
+  });
+}
+function rpc(fn, args) { return call('POST', '/rest/v1/rpc/' + fn, args || {}); }
+function fn(args) { return call('POST', '/functions/v1/platform', args); }
+
+var shops = null, isAdmin = null, q = '', creating = false, created = null, err = '';
+function today() { return new Date().toISOString().slice(0, 10); }
+function linkOf(id) { return C.baseDomain ? 'https://' + id + '.' + C.baseDomain + '/' : location.origin + '/' + id; }
+function slugify(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }
+function genPass() { var a = 'abcdefghjkmnpqrstuvwxyz23456789', s = ''; var r = new Uint32Array(10); crypto.getRandomValues(r); for (var i = 0; i < 10; i++) s += a[r[i] % a.length]; return s; }
+
+function load() {
+  return rpc('is_platform_admin').then(function (a) {
+    isAdmin = a === true; if (!isAdmin) return render();
+    return rpc('platform_shops').then(function (rows) { shops = rows; render(); });
+  }).catch(function (e) { err = e.message; render(); });
+}
+
+function render() {
+  if (!sess) return renderLogin();
+  if (isAdmin === null) { root.innerHTML = '<div class="login"><form><h1>…</h1><p>' + esc(err || 'Chargement') + '</p></form></div>'; return; }
+  if (!isAdmin) {
+    root.innerHTML = '<div class="login"><form onsubmit="return false"><h1>⛔ Accès réservé</h1><p>Ce compte (' + esc(sess.user.email) + ') n\'est pas administrateur de la plateforme.</p><a class="btn" href="admin.html" style="width:100%">Aller à ma boutique</a><p></p><button class="btn" data-a="logout" style="width:100%">Se déconnecter</button></form></div>';
+    return;
+  }
+  var all = shops || [], open = all.filter(function (s) { return s.open; }).length;
+  var week = all.reduce(function (n, s) { return n + (+s.orders_7d || 0); }, 0);
+  var h = '<header class="top"><div class="wrap"><h1>🧭 Plateforme</h1><button data-a="logout">Sortir</button></div></header><main class="wrap">';
+  h += '<div class="kpis"><div><b>' + all.length + '</b><small>restaurants</small></div><div><b>' + open + '</b><small>ouverts</small></div><div><b>' + (all.length - open) + '</b><small>fermés</small></div><div><b>' + week + '</b><small>commandes 7 j</small></div></div>';
+  if (created) {
+    h += '<div class="card done" id="created"><h3>✅ ' + esc(created.name) + ' est créé</h3><p class="sub">Envoyez ce message au client :</p><pre id="msg">' + esc(created.msg) + '</pre>' +
+      '<div class="acts"><button class="btn green" data-a="copy">📋 Copier</button><a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(created.msg) + '">Envoyer sur WhatsApp</a><button class="btn" data-a="close-created">OK</button></div></div>';
+  }
+  h += '<details class="card" id="new"' + (creating ? ' open' : '') + '><summary>➕ Nouveau restaurant</summary><form id="nf">' +
+    '<label>Nom du commerce<input name="name" required placeholder="Pizza Oran"></label>' +
+    '<label>Lien <small>(' + esc(linkOf('…').replace(/…\/?$/, '')) + '…)</small><input name="id" required pattern="[a-z0-9][a-z0-9-]{1,39}" placeholder="pizza-oran"></label>' +
+    '<div class="two"><label>Type<select name="mode"><option value="menu">🍽️ Restaurant</option><option value="shop">🛍️ Boutique</option></select></label>' +
+    '<label>Copier le menu de<select name="copy_from"><option value="">— vide —</option>' + all.map(function (s) { return '<option value="' + esc(s.id) + '">' + esc(s.name || s.id) + '</option>'; }).join('') + '</select></label></div>' +
+    '<label>Email du client<input name="email" type="email" required placeholder="client@gmail.com"></label>' +
+    '<label>Mot de passe de départ<input name="password" required minlength="8" value="' + genPass() + '"></label>' +
+    '<p class="err" id="nerr"></p><button class="btn pri" style="width:100%;margin-top:12px">Créer le restaurant</button></form></details>';
+  h += '<input class="search" id="q" type="search" placeholder="🔎 Rechercher" value="' + esc(q) + '">';
+  all.filter(function (s) { return !q || ((s.name || '') + ' ' + s.id + ' ' + (s.owner_email || '')).toLowerCase().indexOf(q.toLowerCase()) >= 0; }).forEach(function (s) {
+    var why = s.open ? 'Ouvert' : s.status === 'suspended' ? 'Suspendu' : 'Expiré';
+    h += '<div class="card" data-shop="' + esc(s.id) + '"><h3>' + esc(s.name || s.id) + ' <span class="badge ' + (s.open ? 'on' : 'off') + '">' + why + '</span></h3>' +
+      '<p class="sub">' + esc(linkOf(s.id)) + '</p><p class="sub">' + esc(s.owner_email || 'sans propriétaire') + ' · ' + (+s.items || 0) + ' articles · ' + (+s.orders_7d || 0) + ' commandes 7 j' +
+      (s.paid_until ? ' · payé jusqu\'au ' + esc(s.paid_until) : '') + '</p>' +
+      '<div class="acts"><a class="btn" target="_blank" rel="noopener" href="' + esc(linkOf(s.id)) + '">👁 Site</a><a class="btn" href="admin.html?shop=' + esc(s.id) + '">✏️ Modifier</a>' +
+      '<a class="btn" target="_blank" rel="noopener" href="qr.html?shop=' + esc(s.id) + '">📱 QR</a>' +
+      (s.status === 'suspended' ? '<button class="btn green" data-a="status" data-id="' + esc(s.id) + '" data-v="active">Réactiver</button>' : '<button class="btn danger" data-a="status" data-id="' + esc(s.id) + '" data-v="suspended">Suspendre</button>') +
+      '<button class="btn" data-a="pass" data-id="' + esc(s.id) + '">🔑 Mot de passe</button></div>' +
+      '<label>Payé jusqu\'au <small>(vide = sans limite)</small><input type="date" data-a="paid" data-id="' + esc(s.id) + '" value="' + esc(s.paid_until || '') + '"></label></div>';
+  });
+  if (!all.length) h += '<p class="sub" style="text-align:center;padding:20px">Aucun restaurant. Créez le premier ci-dessus.</p>';
+  h += '</main>';
+  root.innerHTML = h;
+  var nf = $('#nf');
+  nf.name.addEventListener('input', function () { if (!nf.id.dataset.touched) nf.id.value = slugify(nf.name.value); });
+  nf.id.addEventListener('input', function () { nf.id.dataset.touched = 1; });
+  nf.onsubmit = function (e) {
+    e.preventDefault();
+    var d = { action: 'create_shop', name: nf.name.value.trim(), id: nf.id.value.trim(), mode: nf.mode.value, copy_from: nf.copy_from.value || null, email: nf.email.value.trim(), password: nf.password.value };
+    var btn = nf.querySelector('.btn'); btn.disabled = true; btn.textContent = '…';
+    fn(d).then(function (r) {
+      var link = linkOf(d.id), adm = location.origin + '/admin.html';
+      created = { name: d.name, msg: 'Bonjour ! Votre menu en ligne est prêt :\n' + link + '\n\nPour modifier vos articles et photos :\n' + adm + '\nEmail : ' + d.email + '\n' +
+        (r.reused ? 'Mot de passe : celui que vous utilisez déjà' : 'Mot de passe : ' + d.password) + '\n\nCommencez par « Boutique » pour mettre votre numéro WhatsApp.' };
+      creating = false; return load();
+    }).catch(function (er) { btn.disabled = false; btn.textContent = 'Créer le restaurant'; $('#nerr').textContent = er.message; });
+  };
+}
+
+function renderLogin(e) {
+  root.innerHTML = '<div class="login"><form id="login"><h1>🧭 Plateforme</h1><p>Connexion administrateur.</p>' +
+    '<label for="em">Email<input id="em" type="email" autocomplete="username" required></label><label for="pw">Mot de passe<input id="pw" type="password" autocomplete="current-password" required></label>' +
+    '<p class="err">' + esc(e || '') + '</p><button class="btn pri" style="width:100%;margin-top:12px">Se connecter</button></form></div>';
+  $('#login').onsubmit = function (ev) {
+    ev.preventDefault();
+    authCall('password', { email: $('#em').value.trim(), password: $('#pw').value }).then(function () { isAdmin = null; render(); load(); }).catch(function (er) { renderLogin(er.message); });
+  };
+}
+
+root.addEventListener('click', function (e) {
+  var el = e.target.closest('[data-a]'); if (!el || el.tagName === 'INPUT') return;
+  var a = el.getAttribute('data-a'), id = el.getAttribute('data-id');
+  if (a === 'logout') { sess = null; saveSess(); isAdmin = null; shops = null; render(); }
+  else if (a === 'status') {
+    var s = shops.filter(function (x) { return x.id === id; })[0], v = el.getAttribute('data-v');
+    if (v === 'suspended' && !confirm('Suspendre « ' + (s.name || id) + ' » ? Le menu sera caché au public.')) return;
+    rpc('platform_update_shop', { p_id: id, p_status: v, p_paid_until: s.paid_until || null }).then(function () { toast(v === 'active' ? '✓ Réactivé' : 'Suspendu'); return load(); }).catch(function (er) { toast(er.message, true); });
+  }
+  else if (a === 'pass') {
+    var p = prompt('Nouveau mot de passe pour ' + id + ' (8 caractères min.) :', genPass()); if (!p) return;
+    fn({ action: 'set_password', id: id, password: p }).then(function () { toast('✓ Mot de passe changé : ' + p); }).catch(function (er) { toast(er.message, true); });
+  }
+  else if (a === 'copy') { try { navigator.clipboard.writeText(created.msg); toast('✓ Copié'); } catch (er) { toast('Copie impossible', true); } }
+  else if (a === 'close-created') { created = null; render(); }
+});
+root.addEventListener('change', function (e) {
+  var el = e.target; if (el.getAttribute('data-a') !== 'paid') return;
+  var id = el.getAttribute('data-id'), s = shops.filter(function (x) { return x.id === id; })[0];
+  rpc('platform_update_shop', { p_id: id, p_status: s.status, p_paid_until: el.value || null }).then(function () { toast('✓ Date enregistrée'); return load(); }).catch(function (er) { toast(er.message, true); });
+});
+root.addEventListener('input', function (e) {
+  if (e.target.id !== 'q') return; q = e.target.value; var pos = e.target.selectionStart; render(); var n = $('#q'); n.focus(); n.setSelectionRange(pos, pos);
+});
+root.addEventListener('toggle', function (e) { if (e.target.id === 'new') creating = e.target.open; }, true);
+
+window.__platform = { slugify: slugify, linkOf: linkOf };
+if (!SB) root.innerHTML = '<div class="login"><form><h1>⚙️</h1><p>Ajoutez supabase dans config.js.</p></form></div>';
+else if (sess) { render(); load(); } else render();
+})();
+</script>
+</body>
+</html>

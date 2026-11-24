@@ -1,6 +1,6 @@
 # Test report
 
-**75/75 checks passed** · 2026-11-19 14:18 UTC · Chromium, Pixel 5 emulation
+**75/75 checks passed** · 2026-11-19 16:45 UTC · Chromium, Pixel 5 emulation
 
 ## ✅ Restaurant FR: menu → options → cart → WhatsApp
 - ✓ demo banner shown
@@ -82,10 +82,10 @@
 - ✓ no JS errors: 
 
 ## ✅ Performance: page weight + slow 3G load
-- ✓ bahia-pizza: total transfer 47.8 KB (< 80 KB, uncompressed)
-- ✓ bahia-pizza: loads in 1.8 s on slow 3G (400 kbps, 400 ms latency)
-- ✓ lina-style: total transfer 47.4 KB (< 80 KB, uncompressed)
-- ✓ lina-style: loads in 1.8 s on slow 3G (400 kbps, 400 ms latency)
+- ✓ bahia-pizza: total transfer 57.2 KB (< 80 KB, uncompressed)
+- ✓ bahia-pizza: loads in 2.0 s on slow 3G (400 kbps, 400 ms latency)
+- ✓ lina-style: total transfer 56.9 KB (< 80 KB, uncompressed)
+- ✓ lina-style: loads in 2.0 s on slow 3G (400 kbps, 400 ms latency)
 
 ## ✅ Desktop layout
 - ✓ no horizontal scroll on desktop

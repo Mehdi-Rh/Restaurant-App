@@ -219,7 +219,7 @@ async function run() {
 
   current = 'Security (mock mirrors schema.sql)';
   console.log(current);
-  const tk = await adm.evaluate(() => JSON.parse(localStorage.getItem('wo_admin_bahia-pizza')).access_token);
+  const tk = await adm.evaluate(() => JSON.parse(localStorage.getItem('wo_admin')).access_token);
   const h = { apikey: 'anon-key', Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' };
   let r = await fetch(SBURL + '/rest/v1/items', { method: 'POST', headers: h, body: JSON.stringify({ shop_id: 'lina-style', name: 'x' }) });
   eq(r.status, 403, 'cannot add items to another shop');
