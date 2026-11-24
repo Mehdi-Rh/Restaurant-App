@@ -49,7 +49,7 @@ $$;
 
 -- keep updated_at fresh
 create or replace function public.touch_updated_at()
-returns trigger language plpgsql as $$ begin new.updated_at = now(); return new; end $$;
+returns trigger language plpgsql set search_path = '' as $$ begin new.updated_at = now(); return new; end $$;
 drop trigger if exists items_touch on public.items;
 create trigger items_touch before update on public.items for each row execute function public.touch_updated_at();
 drop trigger if exists shops_touch on public.shops;
