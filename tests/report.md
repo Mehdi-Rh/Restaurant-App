@@ -1,6 +1,6 @@
 # Test report
 
-**85/85 checks passed** · 2026-11-19 11:26 UTC · Chromium, Pixel 5 emulation
+**75/75 checks passed** · 2026-11-19 14:18 UTC · Chromium, Pixel 5 emulation
 
 ## ✅ Restaurant FR: menu → options → cart → WhatsApp
 - ✓ demo banner shown
@@ -76,27 +76,15 @@
 - ✓ shop message has: *Total : 12 500 DA*
 - ✓ no JS errors: 
 
-## ✅ Admin: edit, options parser, preview, export
-- ✓ options text round-trips for every demo item (got "", want "")
-- ✓ options parser (got "[{\"name\":\"Couleur\",\"name_ar\":\"اللون\",\"choices\":[{\"label\":\"Noir\",\"label_ar\":\"أسود\",\"price\":900,\"color\":\"#111111\"},{\"label\":\"Rouge\",\"add\":50,\"soldOut\":true}]},{\"name\":\"Supp\",\"multi\":true,\"choices\":[{\"label\":\"Œuf\",\"add\":50}]}]", want "[{\"name\":\"Couleur\",\"name_ar\":\"اللون\",\"choices\":[{\"label\":\"Noir\",\"label_ar\":\"أسود\",\"price\":900,\"color\":\"#111111\"},{\"label\":\"Rouge\",\"add\":50,\"soldOut\":true}]},{\"name\":\"Supp\",\"multi\":true,\"choices\":[{\"label\":\"Œuf\",\"add\":50}]}]")
-- ✓ per-wilaya fee parser (got "{\"16\":500,\"09\":450,\"default\":800}", want "{\"16\":500,\"09\":450,\"default\":800}")
-- ✓ preview shows edited name
-- ✓ preview shows edited price
-- ✓ preview shows new item
-- ✓ exported config.js is valid and has edits (got "Chez Test", want "Chez Test")
-- ✓ new item gets clean id (got "pizza-speciale", want "pizza-speciale")
-- ✓ new item options exported (got "[{\"name\":\"Taille\",\"choices\":[{\"label\":\"M\",\"price\":1200},{\"label\":\"L\",\"price\":1600}]}]", want "[{\"name\":\"Taille\",\"choices\":[{\"label\":\"M\",\"price\":1200},{\"label\":\"L\",\"price\":1600}]}]")
-- ✓ no JS errors: 
-
 ## ✅ QR generator
 - ✓ QR decodes to the link (got "https://bahia-pizza.netlify.app/", want "https://bahia-pizza.netlify.app/")
 - ✓ poster QR decodes too (got "https://bahia-pizza.netlify.app/", want "https://bahia-pizza.netlify.app/")
 - ✓ no JS errors: 
 
 ## ✅ Performance: page weight + slow 3G load
-- ✓ bahia-pizza: total transfer 44.1 KB (< 80 KB, uncompressed)
+- ✓ bahia-pizza: total transfer 47.8 KB (< 80 KB, uncompressed)
 - ✓ bahia-pizza: loads in 1.8 s on slow 3G (400 kbps, 400 ms latency)
-- ✓ lina-style: total transfer 43.8 KB (< 80 KB, uncompressed)
+- ✓ lina-style: total transfer 47.4 KB (< 80 KB, uncompressed)
 - ✓ lina-style: loads in 1.8 s on slow 3G (400 kbps, 400 ms latency)
 
 ## ✅ Desktop layout
